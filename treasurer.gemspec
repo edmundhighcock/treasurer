@@ -27,7 +27,8 @@ Gem::Specification.new do |s|
     "VERSION",
     "lib/treasurer.rb",
     "test/helper.rb",
-    "test/test_treasurer.rb"
+    "test/test_treasurer.rb",
+    "treasurer.gemspec"
   ]
   s.homepage = "http://github.com/edmundhighcock/treasurer"
   s.licenses = ["GPLv3"]
