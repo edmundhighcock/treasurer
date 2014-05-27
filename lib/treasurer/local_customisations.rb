@@ -2,39 +2,39 @@ class CodeRunner::Budget
 
 	@excluding = []
 FUTURE_EXPENDITURE = {
-	#"Lloyds" => {
-		#skitrip: { size: 300, date: Date.parse("04/10/2010") },
-		#dreamhost: { size: 150, date: Date.parse("01/11/2010") },
-		#cartax: [
-			#{size: 120, date: Date.parse("01/01/2014")},
-		#],
+	"Lloyds" => {
+		skitrip: { size: 300, date: Date.parse("04/10/2010") },
+		dreamhost: { size: 150, date: Date.parse("01/11/2010") },
+		cartax: [
+			{size: 120, date: Date.parse("01/01/2014")},
+		],
 
-		#counciltax: [
-			#{size: 108, date: Date.parse("12/12/2013")},
-			#{size: 108, date: Date.parse("05/01/2014")},
-			#{size: 108, date: Date.parse("05/02/2014")},
-		#],
-		#heating: [
-			#{size: 250, date: Date.parse("12/12/2013")},
-			#{size: 250, date: Date.parse("05/2/2014")},
-		#],
+		counciltax: [
+			{size: 108, date: Date.parse("12/12/2013")},
+			{size: 108, date: Date.parse("05/01/2014")},
+			{size: 108, date: Date.parse("05/02/2014")},
+		],
+		heating: [
+			{size: 250, date: Date.parse("12/12/2013")},
+			{size: 250, date: Date.parse("05/2/2014")},
+		],
 
-#},
-  #"Barclays" => {
-		#doctor: {size: 400, date: Date.parse("01/03/2014") },
-		#windows: {size: 600, date: Date.parse("01/12/2013") },
-#}
+},
+  "Barclays" => {
+		doctor: {size: 400, date: Date.parse("01/03/2014") },
+		windows: {size: 600, date: Date.parse("01/12/2013") },
+}
 }
 
 FUTURE_EXPENDITURE.default = {}
 
 REGULAR_INCOME = {
-	#"Lloyds" => {
-		#pay: {size: 3750, period: [1, :month], monthday: 28, end: Date.parse("01/10/2014")},
-#},
-	#"Barclays" => {
-		#contractwork: {size: 750, period: [1, :month], monthday: 28, end: Date.parse("01/10/2014")},
-#},
+	"Lloyds" => {
+		pay: {size: 3750, period: [1, :month], monthday: 28, end: Date.parse("01/10/2014")},
+},
+	"Barclays" => {
+		contractwork: {size: 750, period: [1, :month], monthday: 28, end: Date.parse("01/10/2014")},
+},
 }
 
 REGULAR_INCOME.default = {}
@@ -88,7 +88,7 @@ BUDGETS = {
 # Transfer budgets
 TRANSFERS = {
 	LloydsBarclays: {account: "Barclays", period: [1, :day], monthday: nil, start: Date.parse("27/06/2013"), end: nil, discretionary: false},
-	#AmberBarclays: {account: "Barclays", period: [1, :day], monthday: nil, start: Date.parse("27/06/2013"), end: nil, discretionary: false},
+	AmberBarclays: {account: "Barclays", period: [1, :day], monthday: nil, start: Date.parse("27/06/2013"), end: nil, discretionary: false},
 }
 
 def in_date(item)
@@ -97,15 +97,39 @@ end
 
 
 def category
-	return :Unknown
+	case description
+	when /co-op/i 
+		:Food
+	when /insurance/i
+		:Insurance
+	when /Vodafone/i
+		:Phone
+	when /Adams/i
+		:Rent
+	when /Carfax/i
+		:Cash
+	when /blackwell/i
+		:Books
+	else
+		:Unknown
+	end
 end
 
 def budget
 	case description
 	when /Vodafone/i
 		:Monthly
-	when /Carfax/i
-		:WeeklyBarclays
+	else
+		case category
+		when :Food
+			:Weekly
+		when :Insurance, :Phone, :Rent
+			:Monthly
+		when :Books, :Cash
+			:WeeklyBarclays
+		else
+			:Unknown
+		end
 	end
 end
 	

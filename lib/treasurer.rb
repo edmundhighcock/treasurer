@@ -43,7 +43,7 @@ EXAMPLES
 EOF
 	
 	COMMANDS_WITH_HELP = [
-		['add_file', 'add', 1,  'Import a new internet banking spreadsheet.', ['csv spreadsheet'], []],
+		['add_file', 'add', 2,  'Import a new internet banking spreadsheet for the given account.', ['csv spreadsheet filename', 'account name'], []],
 		['add_folder_of_files', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
 		['init_root_folder', 'init', 1,  'Create a new folder and initialise it for storing treasurer data.', ['folder'], []],
 
