@@ -46,13 +46,16 @@ EOF
 		['add_file', 'add', 2,  'Import a new internet banking spreadsheet for the given account.', ['csv spreadsheet filename', 'account name'], []],
 		['add_folder_of_files', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
 		['init_root_folder', 'init', 1,  'Create a new folder and initialise it for storing treasurer data.', ['folder'], []],
+		['create_report', 'report', 0,  'Generate a detailed report (typeset using latex) showing account activity, spending by category, and projections.', [], [:a, :b, :t]],
 
 	]
 	
 
 
 	COMMAND_LINE_FLAGS_WITH_HELP = [
-		#['--boolean', '-b', GetoptLong::NO_ARGUMENT, 'A boolean option'],		
+		['--after', '-a', GetoptLong::REQUIRED_ARGUMENT, 'Calculate projections up till given number of days after today'],		
+		['--before', '-b', GetoptLong::REQUIRED_ARGUMENT, 'Start budget from given number of days before today'],		
+		['--today', '-t', GetoptLong::REQUIRED_ARGUMENT, "Specify today's date, i.e. change the date on which the report is generated."],		
 		#['--formats', '-f', GetoptLong::REQUIRED_ARGUMENT, "A list of formats pertaining to the various input and output files (in the order which they appear), separated by commas. If they are all the same, only one value may be given. If a value is left empty (i.e. there are two commas in a row) then the previous value will be used. Currently supported formats are #{SUPPORTED_FORMATS.inspect}. "],		
 
 		]
@@ -99,6 +102,8 @@ end
 $has_put_startup_message_for_code_runner = true
 require 'coderunner'
 require 'treasurer/commands.rb'
+require 'treasurer/report.rb'
+
 
 ######################################
 # This must be at the end of the file

@@ -11,6 +11,7 @@ class TestTreasurer < Test::Unit::TestCase
 			Treasurer.add_file('../equityaccount.cvs', 'Lloyds', {})
 			Treasurer.status
 			Treasurer.status h: :component
+			Treasurer.report t: Date.parse('2010-09-03'), b: 20, a: 10
 		end
 	end
 end

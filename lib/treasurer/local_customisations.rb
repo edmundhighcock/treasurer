@@ -1,4 +1,5 @@
-class CodeRunner::Budget
+#class CodeRunner::Budget
+module Treasurer::LocalCustomisations
 
 	@excluding = []
 FUTURE_EXPENDITURE = {

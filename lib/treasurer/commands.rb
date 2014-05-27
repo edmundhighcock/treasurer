@@ -2,7 +2,7 @@
 class Treasurer
 class << self
 	def add_file(file, account, copts={})
-		check_is_treasurer_folder
+		load_treasurer_folder
 		ep 'entries', Dir.entries
 		CodeRunner.submit(p: "{data_file: '#{File.expand_path(file)}', account: '#{account}'}")
 	end
@@ -15,6 +15,18 @@ class << self
 		FileUtils.cp(SCRIPT_FOLDER + '/treasurer/local_customisations.rb', folder + '/local_customisations.rb')
 		CodeRunner.fetch_runner(Y: folder, C: 'budget', X: '/dev/null')
 		eputs "\n\n Your treasurer folder '#{folder}' has been set up. All further treasurer commands should be run from within this folder.\n"
+	end
+	def load_treasurer_folder
+		check_is_treasurer_folder
+		Treasurer.send(:remove_const, :LocalCustomisations) if defined? Treasurer::LocalCustomisations
+    load 'local_customisations.rb'
+		Treasurer::Reporter.send(:include, Treasurer::LocalCustomisations)
+		CodeRunner::Budget.send(:include, Treasurer::LocalCustomisations)
+	end
+	def report(copts = {})
+		load_treasurer_folder
+		reporter = Reporter.new(CodeRunner.runner, days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t])
+		reporter.report()
 	end
 
 	def method_missing(meth, *args)
