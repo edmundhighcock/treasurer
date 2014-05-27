@@ -110,9 +110,3 @@ def budget
 end
 	
 end
-module CodeRunner::InteractiveMethods
-	def amber_owes_joint_acc
-		p @runner.phantom_run_list.values.find_all{|r| r.date > Date.parse("1 jun 2013")}.find_all{|r| r.description =~/Sainsbury/i}.map{|r| [r.description, r.credit]}
-		puts "Amber owes joint acc"
-	end
-end
