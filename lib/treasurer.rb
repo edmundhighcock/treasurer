@@ -31,7 +31,9 @@ DESCRIPTION
   
 EXAMPLES
 
-  treasurer add mybankstatement.csv
+  treasurer init my_accounts_folder
+
+  treasurer add my_bank_statement.csv
 
   treasurer report 
 
@@ -42,7 +44,8 @@ EOF
 	
 	COMMANDS_WITH_HELP = [
 		['add_file', 'add', 1,  'Import a new internet banking spreadsheet.', ['csv spreadsheet'], []],
-		['add_folder', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
+		['add_folder_of_files', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
+		['init_root_folder', 'init', 1,  'Create a new folder and initialise it for storing treasurer data.', ['folder'], []],
 
 	]
 	
@@ -90,6 +93,7 @@ class Treasurer
 			2
 		end
 	end
+	SCRIPT_FOLDER = folder = File.dirname(File.expand_path(__FILE__))
 end
 
 $has_put_startup_message_for_code_runner = true

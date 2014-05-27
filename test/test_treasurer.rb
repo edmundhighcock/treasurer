@@ -1,7 +1,8 @@
 require 'helper'
 
 class TestTreasurer < Test::Unit::TestCase
-  should "probably rename this file and start testing for real" do
-    flunk "hey buddy, you should probably rename this file and start testing for real"
-  end
+	def test_setup
+		Treasurer.init('test/myaccount', {})
+
+	end
 end
