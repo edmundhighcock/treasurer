@@ -4,7 +4,7 @@ class << self
 	def add_file(file, account, copts={})
 		load_treasurer_folder
 		ep 'entries', Dir.entries
-		CodeRunner.submit(p: "{data_file: '#{File.expand_path(file)}', account: '#{account}'}")
+		CodeRunner.submit(p: "{data_file: '#{File.expand_path(file)}', account: :#{account}}")
 	end
 	def check_is_treasurer_folder
 		raise "This folder has not been set up to use with Treasurer; please initialise a folder with treasurer init" unless FileTest.exist? '.code_runner_script_defaults.rb' and eval(File.read('.code_runner_script_defaults.rb'))[:code] == 'budget'
@@ -21,11 +21,13 @@ class << self
 		Treasurer.send(:remove_const, :LocalCustomisations) if defined? Treasurer::LocalCustomisations
     load 'local_customisations.rb'
 		Treasurer::Reporter.send(:include, Treasurer::LocalCustomisations)
+		Treasurer::Reporter::Account.send(:include, Treasurer::LocalCustomisations)
 		CodeRunner::Budget.send(:include, Treasurer::LocalCustomisations)
+		runner = CodeRunner.fetch_runner
 	end
 	def report(copts = {})
 		load_treasurer_folder
-		reporter = Reporter.new(CodeRunner.runner, days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t])
+		reporter = Reporter.new(CodeRunner.fetch_runner(h: :component), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t])
 		reporter.report()
 	end
 
