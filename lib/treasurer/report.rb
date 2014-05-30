@@ -51,6 +51,7 @@ class Reporter
 	attr_reader :in_limit_discretionary_budget_factor
 	attr_reader :stable_discretionary_budget_factor
 	attr_accessor :projected_budget_factor
+	attr_accessor :equity
 	def initialize(runner, options)
 		@runner = runner
 		@days_ahead = options[:days_ahead]||180
@@ -149,12 +150,13 @@ EOF
 			@cache ||={}
 		end
 		def non_discretionary_projected_balance(date)
+			 #ep ['FUTURE_INCOME', FUTURE_INCOME, name] if FUTURE_INCOME.size > 0
 			 cache[[:non_discretionary_projected_balance, date]] ||= 
-				 balance - 
-				 @reporter.sum_regular(REGULAR_EXPENDITURE[name], date) + 
-				 @reporter.sum_regular(REGULAR_INCOME[name], date) -  
-				 @reporter.sum_future(FUTURE_EXPENDITURE[name], date) + 
-				 @reporter.sum_future(FUTURE_INCOME[name], date) + 
+				 balance +
+				 #@reporter.sum_regular(REGULAR_EXPENDITURE[name], date) + 
+				 #@reporter.sum_regular(REGULAR_INCOME[name], date) -  
+				 #@reporter.sum_future(FUTURE_EXPENDITURE[name], date) + 
+				 #@reporter.sum_future(FUTURE_INCOME[name], date) + 
 				 (FUTURE_TRANSFERS.keys.find_all{|from,to| to == name}.map{|key|
 					 @reporter.sum_future(FUTURE_TRANSFERS[key], date) * money_in_sign
 				 }.sum||0) - 
@@ -173,7 +175,7 @@ EOF
 		def write_balance_graph(today, days_before, days_ahead)
 			 #accshort = name.gsub(/\s/, '')
 			 if not (@external or type == :Equity)
-				 kit = @runner.graphkit(['date.to_time.to_i', 'balance'], {conditions: "account == #{name.inspect} and days_ago(Date.parse(#{today.to_s.inspect})) < #{days_before} and days_ago(Date.parse(#{today.to_s.inspect})) > -1", sort: 'date'})
+				 kit = @runner.graphkit(['date.to_time.to_i', 'balance'], {conditions: "account == #{name.inspect} and days_ago(Date.parse(#{today.to_s.inspect})) < #{days_before} and days_ago(Date.parse(#{today.to_s.inspect})) > -1", sort: '[date, id]'})
 			 else
 				 pastdates = (today-days_before..today).to_a
 				 balances = pastdates.map{|date| balance(date)}
@@ -330,7 +332,7 @@ EOF
 		kit = GraphKit.quick_create([exps])
 		kit.data[0].gp.with = 'boxes'
 		kit.gp.style = "fill solid"
-		pp ['kit222', kit, labels]
+		#pp ['kit222', kit, labels]
 		i = -1
 		kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 315"
 		kit.gnuplot_write("#{name}.eps")

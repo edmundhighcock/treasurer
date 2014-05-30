@@ -2,41 +2,41 @@
 module Treasurer::LocalCustomisations
 
 	@excluding = []
-FUTURE_EXPENDITURE = {
-	#:FirstBank => {
-		#skitrip: { size: 300, date: Date.parse("04/10/2010") },
-		#webhosting: { size: 150, date: Date.parse("01/11/2010") },
-		#cartax: [
-			#{size: 120, date: Date.parse("01/01/2014")},
-		#],
+#FUTURE_EXPENDITURE = {
+	##:FirstBank => {
+		##skitrip: { size: 300, date: Date.parse("04/10/2010") },
+		##webhosting: { size: 150, date: Date.parse("01/11/2010") },
+		##cartax: [
+			##{size: 120, date: Date.parse("01/01/2014")},
+		##],
 
-		#counciltax: [
-			#{size: 108, date: Date.parse("12/12/2010")},
-			#{size: 108, date: Date.parse("05/01/2011")},
-			#{size: 108, date: Date.parse("05/02/2011")},
-		#],
-		#heating: [
-			#{size: 250, date: Date.parse("12/12/2013")},
-			#{size: 250, date: Date.parse("05/2/2014")},
-		#],
+		##counciltax: [
+			##{size: 108, date: Date.parse("12/12/2010")},
+			##{size: 108, date: Date.parse("05/01/2011")},
+			##{size: 108, date: Date.parse("05/02/2011")},
+		##],
+		##heating: [
+			##{size: 250, date: Date.parse("12/12/2013")},
+			##{size: 250, date: Date.parse("05/2/2014")},
+		##],
 
-#},
-  #:SecondBank => {
-		#doctor: {size: 400, date: Date.parse("01/03/2014") },
-		#windows: {size: 600, date: Date.parse("01/12/2013") },
+##},
+  ##:SecondBank => {
+		##doctor: {size: 400, date: Date.parse("01/03/2014") },
+		##windows: {size: 600, date: Date.parse("01/12/2013") },
+##}
 #}
-}
 
-FUTURE_EXPENDITURE.default = {}
+#FUTURE_EXPENDITURE.default = {}
 
-REGULAR_INCOME = {
-}
+#REGULAR_INCOME = {
+#}
 
-REGULAR_INCOME.default = {}
+#REGULAR_INCOME.default = {}
 
-REGULAR_EXPENDITURE = {
-}
-REGULAR_EXPENDITURE.default = {}
+#REGULAR_EXPENDITURE = {
+#}
+#REGULAR_EXPENDITURE.default = {}
 
 REGULAR_TRANSFERS = {
 	[:FirstBank, :SecondBank] =>{
@@ -67,26 +67,26 @@ FUTURE_TRANSFERS = {
 FUTURE_TRANSFERS.default = {}
 
 
-# One off expected gains
-FUTURE_INCOME = {
-	#:FirstBank => {
-		#stipend: [
-			#{ size: 1200*3, date: Date.parse("25/05/2011") },
-			#{ size: 1200*3, date: Date.parse("25/02/2011") },
-			#{ size: 4300, date: Date.parse("20/09/2010") },
-			#{ size: 4300, date: Date.parse("20/12/2010") }
-		#],
-		#expenses: [
-			#{ size: 1085+41, date: Date.parse("1/12/2013") }
-		#],
+## One off expected gains
+#FUTURE_INCOME = {
+	##:FirstBank => {
+		##stipend: [
+			##{ size: 1200*3, date: Date.parse("25/05/2011") },
+			##{ size: 1200*3, date: Date.parse("25/02/2011") },
+			##{ size: 4300, date: Date.parse("20/09/2010") },
+			##{ size: 4300, date: Date.parse("20/12/2010") }
+		##],
+		##expenses: [
+			##{ size: 1085+41, date: Date.parse("1/12/2013") }
+		##],
 
-#},
-  #:SecondBank => {
+##},
+  ##:SecondBank => {
 
+##}
 #}
-}
 
-FUTURE_INCOME.default = {}
+#FUTURE_INCOME.default = {}
 
 
 BUDGETS = {
@@ -121,7 +121,7 @@ end
 def red_line(account, date)
 	case account
 	when :FirstBank
-		400
+		300
 	when :SecondBank
 		500
 	else

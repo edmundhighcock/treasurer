@@ -6,6 +6,15 @@ class << self
 		ep 'entries', Dir.entries
 		CodeRunner.submit(p: "{data_file: '#{File.expand_path(file)}', account: :#{account}}")
 	end
+	def add_folder(folder, copts={})
+		#Dir.chdir(folder) do
+			files = Dir.entries(folder).grep(/\.csv$/)
+			accounts = files.map{|f| f.sub(/\.csv/, '')}
+			files = files.map{|f| folder + '/' + f}
+			p ['files789', files, accounts]
+			files.zip(accounts).each{|f,a| add_file(f, a, copts)}
+		#end
+	end
 	def check_is_treasurer_folder
 		raise "This folder has not been set up to use with Treasurer; please initialise a folder with treasurer init" unless FileTest.exist? '.code_runner_script_defaults.rb' and eval(File.read('.code_runner_script_defaults.rb'))[:code] == 'budget'
 	end
