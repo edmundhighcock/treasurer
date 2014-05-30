@@ -15,5 +15,6 @@ class TestTreasurer < Test::Unit::TestCase
 			Treasurer.status h: :component
 			Treasurer.report t: Date.parse('2010-09-07'), b: 40, a: 35
 		end
+		FileUtils.rm_r(testfolder) if FileTest.exist? testfolder
 	end
 end
