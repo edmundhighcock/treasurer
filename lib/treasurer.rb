@@ -103,6 +103,7 @@ $has_put_startup_message_for_code_runner = true
 require 'coderunner'
 require 'treasurer/commands.rb'
 require 'treasurer/report.rb'
+require 'treasurer/analysis.rb'
 
 
 ######################################

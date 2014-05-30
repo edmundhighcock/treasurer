@@ -12,7 +12,7 @@ class TestTreasurer < Test::Unit::TestCase
 			Treasurer.status
 			Treasurer.add_file('../incomeaccount.cvs', 'SecondBank', {})
 			Treasurer.status h: :component
-			Treasurer.report t: Date.parse('2010-09-07'), b: 40, a: 20
+			Treasurer.report t: Date.parse('2010-09-07'), b: 40, a: 35
 		end
 	end
 end

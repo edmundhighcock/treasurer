@@ -22,6 +22,7 @@ class << self
     load 'local_customisations.rb'
 		Treasurer::Reporter.send(:include, Treasurer::LocalCustomisations)
 		Treasurer::Reporter::Account.send(:include, Treasurer::LocalCustomisations)
+		Treasurer::Reporter::Analysis.send(:include, Treasurer::LocalCustomisations)
 		CodeRunner::Budget.send(:include, Treasurer::LocalCustomisations)
 		runner = CodeRunner.fetch_runner
 	end
