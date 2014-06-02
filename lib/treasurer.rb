@@ -91,6 +91,9 @@ class Treasurer
 		# options (copts) hash
 		def setup(copts)
 			# None neededed
+			copts[:b] = copts[:b].to_i
+			copts[:a] = copts[:a].to_i
+			copts[:t] = Date.parse(copts[:t]) if copts[:t]
 	  end
 		def verbosity
 			2
@@ -100,6 +103,7 @@ class Treasurer
 end
 
 $has_put_startup_message_for_code_runner = true
+require 'date'
 require 'coderunner'
 require 'treasurer/commands.rb'
 require 'treasurer/report.rb'

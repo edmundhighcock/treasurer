@@ -66,8 +66,9 @@ class Reporter
 	def report
 		get_actual_budgets
 		get_projected_budgets
-	  @accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, false)} + 
-			@runs.map{|r| r.external_account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, true)} 
+	  accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, false)} 
+	  external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, true)} 
+		@accounts = accounts + external_accounts
 		@accounts.unshift (@equity = Equity.new(self, @runner, @accounts))
 		get_in_limit_discretionary_budget_factor
 		get_stable_discretionary_budget_factor
@@ -80,7 +81,7 @@ class Reporter
 		report << expense_account_summary
 		report << budget_expenditure_graphs
 		report << '\end{multicols}'
-		report << budget_resolutions
+		#report << budget_resolutions
 		report << budget_breakdown
 		report << transactions_by_account
 		report << footer
@@ -112,12 +113,17 @@ class Reporter
 			#if !date
 				#@runs.sort_by{|r| r.date}[-1].balance
 			if @external
-				@runs.find_all{|r| r.date < date}.map{|r| (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
+				#p ['name is ', name, type]
+				#
+				#@runs.find_all{|r| r.date < date}.map{|r| (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
+				# Temporary....
+				0.0
 			else
 				@runs.sort_by{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}[0].balance
 			end
 		end
 		def expenditure(today, days_before, &block)
+				p ['name22 is ', name, type]
 			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| @external ? r.withdrawal : r.deposit }.sum || 0
 		end
 		def income(today, days_before)
@@ -143,6 +149,7 @@ EOF
 			end
 		end
 		def projected_balance(date)
+			 return 0.0 if @external # Temporary Hack
 			 non_discretionary_projected_balance(date)  -
 			 @reporter.sum_regular(@projected_budgets, date) 
 		end
@@ -194,7 +201,7 @@ EOF
 			 stable = futuredates.map{|date| projected_balance(date)}
 			 kit5 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, stable])
 			 #exit
-			 @projected_budget_factor = nil
+			 @reporter.projected_budget_factor = nil
 			 kit += (kit2 + kit4 + kit5)
 			 kit = kit3 + kit
 			 kit.title = "Balance for #{name}"
@@ -287,19 +294,19 @@ EOF
 \\subsection{Equity}
 #{@accounts.find{|acc| acc.type == :Equity }.summary_table(@today, @days_before)}
 \\subsection{Assets}
-#{@accounts.find_all{|acc| account_type(acc.name) == :Asset }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
+#{@accounts.find_all{|acc| acc.type == :Asset }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
 \\subsection{Liabilities}
-#{@accounts.find_all{|acc| account_type(acc.name) == :Liability }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
+#{@accounts.find_all{|acc| acc.type == :Liability }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
 \\subsection{Income}
-#{@accounts.find_all{|acc| account_type(acc.name) == :Income }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
+#{@accounts.find_all{|acc| acc.type == :Income }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
 \\subsection{Expenses}
-#{@accounts.find_all{|acc| account_type(acc.name) == :Expense }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
+#{@accounts.find_all{|acc| acc.type == :Expense }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
 EOF
 	end
 	def account_balance_graphs
 		<<EOF
 \\section{Graphs of Recent Balances}
-#{@accounts.find_all{|acc| account_type(acc.name) != :Expense}.map{|acc|
+#{@accounts.find_all{|acc| acc.type != :Expense}.map{|acc|
  acc.write_balance_graph(@today, @days_before, @days_ahead)
  acc.balance_graph_string
 }.join("\n\n")
@@ -326,9 +333,12 @@ EOF
 EOF
 	end
 	def expense_pie_chart(name, &block)
-		expaccs = @accounts.find_all{|acc| account_type(acc.name) == :Expense}
+		expaccs = @accounts.find_all{|acc| acc.type == :Expense}
 		labels = expaccs.map{|acc| acc.name}
 		exps = expaccs.map{|acc| acc.expenditure(@today, 50000, &block)}
+		labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
+		return "No expenditure in budget period." if labels == nil
+		ep ['labels22539', labels, exps]
 		kit = GraphKit.quick_create([exps])
 		kit.data[0].gp.with = 'boxes'
 		kit.gp.style = "fill solid"
@@ -500,13 +510,13 @@ EOF
 		if items.size > 0
 			"
 			\\footnotesize
-			\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 4 + " L " + " r " * 2 }}
+			\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 2 + " c " }}
 			%\\hline
-			& #{date.to_s.latex_escape} & & & Total & #{expenditure} &  \\\\
+			#{date.to_s.latex_escape} & & & Total & #{expenditure} &  \\\\
 			\\hline
 			\\Tstrut
 				#{items.map{|r| 
-						([:id] + CodeRunner::Budget.rcp.component_results - [:sc, :balance]).map{|res| 
+						( CodeRunner::Budget.rcp.component_results + [:external_account] -  [:sc, :balance ]).map{|res| 
 								r.send(res).to_s.latex_escape
 							}.join(" & ")
 						}.join("\\\\\n")
@@ -534,9 +544,9 @@ EOF
 #{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}.sort_by{|r| [r.date, r.id]}.reverse
 #ep ['acc', acc, 'ids', all.map{|r| r.id}, 'size', all.size]
 all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
-"\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 4 + " L " + " r " * 3 + "l"}}
+"\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 3 + "l"}}
 		#{piece.map{|r| 
-	  ([:id] + CodeRunner::Budget.rcp.component_results - [:sc] + [:budget]).map{|res| r.send(res).to_s.latex_escape
+	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:budget]).map{|res| r.send(res).to_s.latex_escape
 	  #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
   }.join(" & ")
 }.join("\\\\\n")}

@@ -52,6 +52,8 @@ def account_type(account)
 		:Asset
 	when :PersonalLoans
 		:Liability
+	else
+		:Expense
 	end
 end
 

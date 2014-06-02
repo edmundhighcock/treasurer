@@ -11,10 +11,10 @@ class TestTreasurer < Test::Unit::TestCase
 			Treasurer.add_file('../bankaccountstatement.csv', 'FirstBank', {})
 			Treasurer.status
 			Treasurer.add_file('../otheraccountstatement.csv', 'SecondBank', {})
-			Treasurer.add_folder('../multiple')
+			Treasurer.add_folder_of_files('../multiple')
 			Treasurer.status h: :component
-			Treasurer.report t: Date.parse('2010-09-07'), b: 40, a: 35
+			Treasurer.create_report t: Date.parse('2010-09-07'), b: 40, a: 35
 		end
-		FileUtils.rm_r(testfolder) if FileTest.exist? testfolder
+		#FileUtils.rm_r(testfolder) if FileTest.exist? testfolder
 	end
 end
