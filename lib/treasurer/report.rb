@@ -74,6 +74,7 @@ class Reporter
 	  accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, false)} 
 	  external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, true)} 
 		@accounts = accounts + external_accounts
+		@expense_accounts = @accounts.find_all{|acc| acc.type == :Expense}
 		get_projected_accounts
 		#p ['projected_accounts_info', @projected_accounts_info]
 		#exit
@@ -86,16 +87,29 @@ class Reporter
 		report << account_summaries
 		report << discretionary_account_table
 		report << account_balance_graphs
-		#report << expense_account_summary
-		#report << account_expenditure_graphs
+		report << expense_account_summary
+		report << account_expenditure_graphs
 		report << '\end{multicols}'
 		##report << account_resolutions
 		#report << account_breakdown
-		#report << transactions_by_account
+		report << transactions_by_account
 		report << footer
 
 		File.open('report.tex', 'w'){|f| f.puts report}
 		system "latex report.tex && latex report.tex"
+	end
+	class Account
+	end
+	class SubAccount < Account
+		def initialize(name, reporter, runner, runs, external)
+			@name = name
+			@reporter = reporter
+			@runner = runner
+			#@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
+			@external = external
+			@runs = runs.find_all{|r| r.sub_account  == name}
+			#ep ['sub_accounts333', name, @runs.size, runs.size]
+		end
 	end
 	class Account
 		attr_reader :name, :external, :runs
@@ -106,6 +120,9 @@ class Reporter
 			#@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
 			@external = external
 			@runs = runs.find_all{|r| (@external ? r.external_account : r.account) == name}
+		end
+		def sub_accounts
+			@sub_accounts ||= @runs.map{|r| r.sub_account}.uniq.map{|acc| SubAccount.new(acc, @reporter, @runner, @runs, @external)}
 		end
 		def type
 			#account_type(name)
@@ -135,21 +152,22 @@ class Reporter
 				@runs.sort_by{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}[0].balance
 			end
 		end
-		def expenditure(today, days_before, &block)
-				p ['name22 is ', name, type]
+		def deposited(today, days_before, &block)
+				p ['name22 is ', name, type, @runs.size]
 			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
 		end
-		def income(today, days_before)
+		def withdrawn(today, days_before)
 			@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
 		end
+		
 		def summary_table(today, days_before)
 
 			<<EOF
 \\subsubsection{#{name}}
 \\begin{tabulary}{0.8\\textwidth}{ r | l}
 Balance & #{balance} \\\\
-Deposited & #{expenditure(today, days_before)} \\\\
-Withdrawn & #{income(today, days_before)} \\\\
+Deposited & #{deposited(today, days_before)} \\\\
+Withdrawn & #{withdrawn(today, days_before)} \\\\
 \\end{tabulary}
 EOF
 		end
@@ -347,28 +365,30 @@ EOF
 		<<EOF
 \\section{Expense Account Summary}
 \\subsection{Budget Period}
-#{expense_pie_chart('accountperiod'){|r| r.days_ago(@today) < @days_before}}
+#{expense_pie_chart('accountperiod', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
 \\subsection{Last Week}
-#{expense_pie_chart('lastweekexpenses'){|r| p ['r.daysago', r.days_ago(@today)]; r.days_ago(@today) < 7}}
+#{expense_pie_chart('lastweekexpenses', @expense_accounts){|r| p ['r.daysago', r.days_ago(@today)]; r.days_ago(@today) < 7}}
 \\subsection{Last Month}
-#{expense_pie_chart('lastmonthexpenses'){|r| r.days_ago(@today) < 30}}
+#{expense_pie_chart('lastmonthexpenses', @expense_accounts){|r| r.days_ago(@today) < 30}}
 \\subsection{Last Year}
-#{expense_pie_chart('lastyearexpenses'){|r| r.days_ago(@today) < 365}}
-\\section{Expense Accounts by Budget}
-#{@actual_accounts.map{|account, account_info|
-	  "\\subsection{#{account}}
-		#{expense_pie_chart(account + 'expenses'){|r|r.days_ago(@today) < @days_before and r.account == account}}"
+#{expense_pie_chart('lastyearexpenses', @expense_accounts){|r| r.days_ago(@today) < 365}}
+\\section{Expense Account Breakdown}
+#{@expense_accounts.map{|account|
+		#ep ['sub_accounts2124', account.sub_accounts.map{|sa| sa.name}]
+	  "\\subsection{#{account.name}} + 
+		#{expense_pie_chart(account.name + 'breakdown', account.sub_accounts){|r|r.days_ago(@today) < @days_before }}"
 }.join("\n\n")}
-
 EOF
+
+#EOF
 	end
-	def expense_pie_chart(name, &block)
-		expaccs = @accounts.find_all{|acc| acc.type == :Expense}
-		labels = expaccs.map{|acc| acc.name}
-		exps = expaccs.map{|acc| acc.expenditure(@today, 50000, &block)}
+	def expense_pie_chart(name, accounts, &block)
+		#expaccs = accounts.find_all{|acc| acc.type == :Expense}
+		labels = accounts.map{|acc| acc.name}
+		exps = accounts.map{|acc| acc.deposited(@today, 50000, &block)}
 		labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
+		#ep ['labels22539', name, labels, exps]
 		return "No expenditure in account period." if labels == nil
-		ep ['labels22539', labels, exps]
 		kit = GraphKit.quick_create([exps])
 		kit.data[0].gp.with = 'boxes'
 		kit.gp.style = "fill solid"
@@ -438,12 +458,13 @@ EOF
 	end
 	def account_expenditure_graphs
 		<<EOF
-\\section{Budget Expenditure}
-#{account_and_transfer_graphs(@actual_accounts, {})}
+\\section{Expenditure by Account Period}
+#{account_and_transfer_graphs(Hash[@expense_accounts.find_all{|acc| acc.info}.map{|acc| [acc.name, acc.info]}], {})}
 EOF
 	end
 	def account_and_transfer_graphs(accounts, options)
 "#{accounts.map{|account, account_info| 
+#ep ['accountbadf', account, account_info]
 dates, expenditures, items = account_expenditure(account, account_info)
 #ep ['account', account, dates, expenditures]
 kit = GraphKit.quick_create([dates.map{|d| d.to_time.to_i}, expenditures])
@@ -532,7 +553,7 @@ EOF
 	end
 	def account_breakdown
 		<<EOF
-\\section{Budget and Transfer Breakdown}
+\\section{SubAccount Breakdown}
 #{(@actual_accounts).map{|account, account_info| 
 	dates, expenditures, account_items = account_expenditure(account, account_info)
 	#pp account, account_items.map{|items| items.map{|i| i.date.to_s}}
@@ -577,7 +598,7 @@ EOF
 all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
 "\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 3 + "l"}}
 		#{piece.map{|r| 
-	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:account]).map{|res| r.send(res).to_s.latex_escape
+	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:sub_account]).map{|res| r.send(res).to_s.latex_escape
 	  #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
   }.join(" & ")
 }.join("\\\\\n")}
