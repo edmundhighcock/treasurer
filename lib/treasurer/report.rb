@@ -1,3 +1,8 @@
+class Float
+	def to_s
+		sprintf("%.2f", self)
+	end
+end
 # Some thoughts on double entry accounting: 
 #
 # assets - liabilities = equity
@@ -48,10 +53,11 @@ class Treasurer
 class Reporter
 	#include LocalCustomisations
 	attr_reader :today
-	attr_reader :in_limit_discretionary_budget_factor
-	attr_reader :stable_discretionary_budget_factor
-	attr_accessor :projected_budget_factor
+	attr_reader :in_limit_discretionary_account_factor
+	attr_reader :stable_discretionary_account_factor
+	attr_accessor :projected_account_factor
 	attr_accessor :equity
+	attr_accessor :projected_accounts_info
 	def initialize(runner, options)
 		@runner = runner
 		@days_ahead = options[:days_ahead]||180
@@ -60,30 +66,32 @@ class Reporter
 		@start_date = @today - @days_before
 		@runs = runner.component_run_list.values
 		@indateruns = @runs.find_all{|r| r.days_ago(@today) < @days_before}
-		p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq 
+		#p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq 
 	
 	end
 	def report
-		get_actual_budgets
-		get_projected_budgets
-	  accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, false)} 
-	  external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, @projected_budgets, true)} 
+		#get_actual_accounts
+	  accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, false)} 
+	  external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, true)} 
 		@accounts = accounts + external_accounts
+		get_projected_accounts
+		#p ['projected_accounts_info', @projected_accounts_info]
+		#exit
 		@accounts.unshift (@equity = Equity.new(self, @runner, @accounts))
-		get_in_limit_discretionary_budget_factor
-		get_stable_discretionary_budget_factor
+		get_in_limit_discretionary_account_factor
+		get_stable_discretionary_account_factor
 		report = ""
 		report << header
 		report << '\begin{multicols}{2}'
 		report << account_summaries
-		report << discretionary_budget_table
+		report << discretionary_account_table
 		report << account_balance_graphs
-		report << expense_account_summary
-		report << budget_expenditure_graphs
+		#report << expense_account_summary
+		#report << account_expenditure_graphs
 		report << '\end{multicols}'
-		#report << budget_resolutions
-		report << budget_breakdown
-		report << transactions_by_account
+		##report << account_resolutions
+		#report << account_breakdown
+		#report << transactions_by_account
 		report << footer
 
 		File.open('report.tex', 'w'){|f| f.puts report}
@@ -91,16 +99,21 @@ class Reporter
 	end
 	class Account
 		attr_reader :name, :external, :runs
-		def initialize(name, reporter, runner, runs, projected_budgets, external)
+		def initialize(name, reporter, runner, runs, external)
 			@name = name
 			@reporter = reporter
 			@runner = runner
-			@projected_budgets =Hash[projected_budgets.find_all{|k,v| v[:account] == name}]
+			#@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
 			@external = external
 			@runs = runs.find_all{|r| (@external ? r.external_account : r.account) == name}
 		end
 		def type
-			account_type(name)
+			#account_type(name)
+			if BUDGETS[name] and type = BUDGETS[name][:type]
+				type
+			else
+				:Expense
+			end
 		end
 		def red_line(date)
 			if Treasurer::LocalCustomisations.instance_methods.include? :red_line
@@ -115,19 +128,19 @@ class Reporter
 			if @external
 				#p ['name is ', name, type]
 				#
-				#@runs.find_all{|r| r.date < date}.map{|r| (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
-				# Temporary....
-				0.0
+				@runs.find_all{|r| r.date < date}.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
+				 #Temporary....
+				#0.0
 			else
 				@runs.sort_by{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}[0].balance
 			end
 		end
 		def expenditure(today, days_before, &block)
 				p ['name22 is ', name, type]
-			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| @external ? r.withdrawal : r.deposit }.sum || 0
+			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
 		end
 		def income(today, days_before)
-			@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| @external ? r.deposit : r.withdrawal }.sum || 0
+			@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
 		end
 		def summary_table(today, days_before)
 
@@ -148,10 +161,23 @@ EOF
 				1.0
 			end
 		end
+		def discretionary
+			info and info[:discretionary]
+		end
+		def info
+			BUDGETS[name]
+		end
 		def projected_balance(date)
-			 return 0.0 if @external # Temporary Hack
+			 #return 0.0 if @external # Temporary Hack
+			 #ep ['projected', @reporter.projected_accounts_info]
+			 raise "Only should be called for Asset and Liability accounts" unless [:Asset, :Liability].include? type
 			 non_discretionary_projected_balance(date)  -
-			 @reporter.sum_regular(@projected_budgets, date) 
+			 @reporter.sum_regular(linked_projected_account_info, date)
+			 
+			 #(discretionary ? @reporter.sum_regular({name => info}, date) : 0.0)
+		end
+		def linked_projected_account_info
+			Hash[@reporter.projected_accounts_info.find_all{|ac,inf| inf[:linked_account] == name}]
 		end
 		def cache
 			@cache ||={}
@@ -193,16 +219,17 @@ EOF
 			 kit2 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, projection])
 			 red = futuredates.map{|date| red_line(date)}
 			 kit3 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, red])
-			 @reporter.projected_budget_factor = @reporter.in_limit_discretionary_budget_factor
+			 @reporter.projected_account_factor = @reporter.in_limit_discretionary_account_factor
 			 limit = futuredates.map{|date| projected_balance(date)}
 			 kit4 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, limit])
-			 @reporter.projected_budget_factor = @reporter.stable_discretionary_budget_factor
-			 #ep ['projected_budget_factor!!!!', @reporter.projected_budget_factor]
+			 @reporter.projected_account_factor = @reporter.stable_discretionary_account_factor
+			 #ep ['projected_account_factor!!!!', @reporter.projected_account_factor]
 			 stable = futuredates.map{|date| projected_balance(date)}
 			 kit5 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, stable])
 			 #exit
-			 @reporter.projected_budget_factor = nil
+			 @reporter.projected_account_factor = nil
 			 kit += (kit2 + kit4 + kit5)
+			 #kit += (kit2)
 			 kit = kit3 + kit
 			 kit.title = "Balance for #{name}"
 			 kit.xlabel = %['Date' offset 0,-2]
@@ -213,8 +240,8 @@ EOF
 			 kit.data[1].gp.title = 'Previous'
 			 kit.data[2].gp.title = '0 GBP Discretionary'
 			 kit.data[2].gp.title = 'Projection'
-			 kit.data[3].gp.title = 'Limit'
-			 kit.data[4].gp.title = 'Stable'
+			 #kit.data[3].gp.title = 'Limit'
+			 #kit.data[4].gp.title = 'Stable'
 			 kit.data.each{|dk| dk.gp.with = "lp"}
 			 kit.gp.key = ' bottom left '
 
@@ -306,9 +333,12 @@ EOF
 	def account_balance_graphs
 		<<EOF
 \\section{Graphs of Recent Balances}
-#{@accounts.find_all{|acc| acc.type != :Expense}.map{|acc|
- acc.write_balance_graph(@today, @days_before, @days_ahead)
- acc.balance_graph_string
+#{[:Equity, :Asset, :Liability].map{|typ|
+ "\\subsection{#{typ}}" + 
+ @accounts.find_all{|acc| acc.type == typ}.map{|acc|
+	 acc.write_balance_graph(@today, @days_before, @days_ahead)
+	 acc.balance_graph_string
+	}.join("\n\n")
 }.join("\n\n")
 }
 EOF
@@ -317,7 +347,7 @@ EOF
 		<<EOF
 \\section{Expense Account Summary}
 \\subsection{Budget Period}
-#{expense_pie_chart('budgetperiod'){|r| r.days_ago(@today) < @days_before}}
+#{expense_pie_chart('accountperiod'){|r| r.days_ago(@today) < @days_before}}
 \\subsection{Last Week}
 #{expense_pie_chart('lastweekexpenses'){|r| p ['r.daysago', r.days_ago(@today)]; r.days_ago(@today) < 7}}
 \\subsection{Last Month}
@@ -325,9 +355,9 @@ EOF
 \\subsection{Last Year}
 #{expense_pie_chart('lastyearexpenses'){|r| r.days_ago(@today) < 365}}
 \\section{Expense Accounts by Budget}
-#{@actual_budgets.map{|budget, budget_info|
-	  "\\subsection{#{budget}}
-		#{expense_pie_chart(budget + 'expenses'){|r|r.days_ago(@today) < @days_before and r.budget == budget}}"
+#{@actual_accounts.map{|account, account_info|
+	  "\\subsection{#{account}}
+		#{expense_pie_chart(account + 'expenses'){|r|r.days_ago(@today) < @days_before and r.account == account}}"
 }.join("\n\n")}
 
 EOF
@@ -337,7 +367,7 @@ EOF
 		labels = expaccs.map{|acc| acc.name}
 		exps = expaccs.map{|acc| acc.expenditure(@today, 50000, &block)}
 		labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
-		return "No expenditure in budget period." if labels == nil
+		return "No expenditure in account period." if labels == nil
 		ep ['labels22539', labels, exps]
 		kit = GraphKit.quick_create([exps])
 		kit.data[0].gp.with = 'boxes'
@@ -349,26 +379,27 @@ EOF
 
     "\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
 	end
-	def get_in_limit_discretionary_budget_factor
-		@projected_budget_factor = 1.0
+	def get_in_limit_discretionary_account_factor
+		@projected_account_factor = 1.0
 		loop do
 			ok = true
 			date = @today
 			while date < @today + @days_ahead
 				ok = false if @equity.projected_balance(date) < @equity.red_line(date)
 				date += 1
-				#ep ['projected_budget_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
+				#ep ['projected_account_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
 			end
-			@in_limit_discretionary_budget_factor = @projected_budget_factor
-			break if (@projected_budget_factor == 0.0 or ok == true)
-			@projected_budget_factor -= 0.01
-			@projected_budget_factor -= 0.1
+			@in_limit_discretionary_account_factor = @projected_account_factor
+			break if (@projected_account_factor == 0.0 or ok == true)
+			@projected_account_factor -= 0.01
+			@projected_account_factor -= 0.1
+			ep ['projected_account_factor', @projected_account_factor]
 		end
-		@projected_budget_factor = nil
+		@projected_account_factor = nil
 		#exit
 	end
-	def get_stable_discretionary_budget_factor
-		@projected_budget_factor = 1.0
+	def get_stable_discretionary_account_factor
+		@projected_account_factor = 1.0
 		loop do
 			ok = true
 			date = @today
@@ -377,55 +408,55 @@ EOF
 				#ok = false if @equity.projected_balance(date) < @equity.red_line(date)
 				date += 1
 				balances.push @equity.projected_balance(date)
-				#ep ['projected_budget_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
+				#ep ['projected_account_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
 			end
 			ok = false if balances.mean < @equity.balance(@today)
-			@stable_discretionary_budget_factor = @projected_budget_factor
-			break if (@projected_budget_factor == 0.0 or ok == true)
-			@projected_budget_factor -= 0.01
-			@projected_budget_factor -= 0.1
+			@stable_discretionary_account_factor = @projected_account_factor
+			break if (@projected_account_factor == 0.0 or ok == true)
+			@projected_account_factor -= 0.01
+			@projected_account_factor -= 0.1
 		end
-		@projected_budget_factor = nil
+		@projected_account_factor = nil
 		#exit
 	end
-	def discretionary_budget_table
-		discretionary_budgets = budgets_with_averages(@projected_budgets)
+	def discretionary_account_table
+		discretionary_accounts = accounts_with_averages(@projected_accounts_info)
 
 		<<EOF
 \\section{Discretionary Budget Summary}
 \\begin{tabulary}{0.5\\textwidth}{ R | c  c  c c  }
 Budget & Average & Projection & Limit & Stable \\\\
-#{discretionary_budgets.map{|budget, info|
+#{discretionary_accounts.map{|account, info|
 		#ep info
-		"#{budget} & #{info[:average]} & #{info[:projection]} & #{
-        (info[:projection] * @in_limit_discretionary_budget_factor).round(2)} & 
-        #{(info[:projection] * @stable_discretionary_budget_factor).round(2)}  \\\\"
+		"#{account} & #{info[:average]} & #{info[:projection]} & #{
+        (info[:projection] * @in_limit_discretionary_account_factor).round(2)} & 
+        #{(info[:projection] * @stable_discretionary_account_factor).round(2)}  \\\\"
   }.join("\n\n")
 }
 \\end{tabulary}
 EOF
 	end
-	def budget_expenditure_graphs
+	def account_expenditure_graphs
 		<<EOF
 \\section{Budget Expenditure}
-#{budget_and_transfer_graphs(@actual_budgets, {})}
+#{account_and_transfer_graphs(@actual_accounts, {})}
 EOF
 	end
-	def budget_and_transfer_graphs(budgets, options)
-"#{budgets.map{|budget, budget_info| 
-dates, expenditures, items = budget_expenditure(budget, budget_info)
-#ep ['budget', budget, dates, expenditures]
+	def account_and_transfer_graphs(accounts, options)
+"#{accounts.map{|account, account_info| 
+dates, expenditures, items = account_expenditure(account, account_info)
+#ep ['account', account, dates, expenditures]
 kit = GraphKit.quick_create([dates.map{|d| d.to_time.to_i}, expenditures])
 kit.data.each{|dk| dk.gp.with="boxes"}
 kit.gp.style = "fill solid"
 kit.xlabel = nil
 kit.ylabel = "Expenditure"
 unless options[:transfers]
- kits = budgets_with_averages({budget => budget_info}).map{|budget, budget_info| 
-	 #ep 'Budget is ', budget
+ kits = accounts_with_averages({account => account_info}).map{|account, account_info| 
+	 #ep 'Budget is ', account
 	 kit2 = GraphKit.quick_create([
 			[dates[0], dates[-1]].map{|d| d.to_time.to_i}, 
-			[budget_info[:average], budget_info[:average]]
+			[account_info[:average], account_info[:average]]
 	 ])
 	 kit2.data[0].gp.with = 'lp lw 4'
 	 kit2
@@ -437,34 +468,34 @@ unless options[:transfers]
 else
 	kit.data[0].y.data.map!{|expen| expen*-1.0}
 end
-kit.title = "#{budget} Expenditure with average (Total = #{kit.data[0].y.data.sum})"
+kit.title = "#{account} Expenditure with average (Total = #{kit.data[0].y.data.sum})"
 CodeRunner::Budget.kit_time_format_x(kit)
 #kit.gnuplot
-#ep ['kit1122', budget, kit]
-kit.gnuplot_write("#{budget}.eps")
-"\\begin{center}\\includegraphics[width=3.0in]{#{budget}.eps}\\vspace{1em}\\end{center}"
+#ep ['kit1122', account, kit]
+kit.gnuplot_write("#{account}.eps")
+"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
 }.join("\n\n")
 }"
 	end
 
-	def budget_resolutions
+	def account_resolutions
 	  <<EOF
 \\section{Budget Resolutions}
 
-This section sums items from budgets drawn from an alternate account, i.e. it determines how much should be transferred from one account to another as a result of expenditure from a given budget.
+This section sums items from accounts drawn from an alternate account, i.e. it determines how much should be transferred from one account to another as a result of expenditure from a given account.
 
-#{@actual_budgets.map{|budget, budget_info|
+#{@actual_accounts.map{|account, account_info|
 
-"\\subsection{#{budget} }
+"\\subsection{#{account} }
 		\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{r l}
 			%\\hline
 			Account Owed & Amount  \\\\
 			\\hline
 			\\Tstrut
-  #{budget_items = @indateruns.find_all{|r| r.budget == budget}
-    alternate_accounts = budget_items.map{|r| r.account}.uniq - [budget_info[:account]]
+  #{account_items = @indateruns.find_all{|r| r.account == account}
+    alternate_accounts = account_items.map{|r| r.account}.uniq - [account_info[:account]]
 		alternate_accounts.map{|acc|
-			alternate_items = budget_items.find_all{|r| r.account == acc}
+			alternate_items = account_items.find_all{|r| r.account == acc}
 			total = alternate_items.map{|r| r.withdrawal - r.deposit}.sum
 			"#{acc} & #{total} \\\\"
 		}.join("\n\n")
@@ -477,10 +508,10 @@ This section sums items from budgets drawn from an alternate account, i.e. it de
 			\\vspace{1em}\n\n
 
 #{	alternate_accounts.map{|acc|
-			alternate_items = budget_items.find_all{|r| r.account == acc}
+			alternate_items = account_items.find_all{|r| r.account == acc}
 			alternate_items.pieces((alternate_items.size.to_f/50.to_f).ceil).map{|piece|
 			"\\footnotesize\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 4 + " L " + " r " * 3 }}
-			    #{budget}: & #{budget_info[:account]} & owes & #{acc} &&&&\\\\
+			    #{account}: & #{account_info[:account]} & owes & #{acc} &&&&\\\\
 					\\hline
 
 					\\Tstrut
@@ -499,14 +530,14 @@ This section sums items from budgets drawn from an alternate account, i.e. it de
 }
 EOF
 	end
-	def budget_breakdown
+	def account_breakdown
 		<<EOF
 \\section{Budget and Transfer Breakdown}
-#{(@actual_budgets).map{|budget, budget_info| 
-	dates, expenditures, budget_items = budget_expenditure(budget, budget_info)
-	#pp budget, budget_items.map{|items| items.map{|i| i.date.to_s}}
-	"\\subsection{#{budget}}" + 
-		budget_items.zip(dates, expenditures).map{|items, date, expenditure|
+#{(@actual_accounts).map{|account, account_info| 
+	dates, expenditures, account_items = account_expenditure(account, account_info)
+	#pp account, account_items.map{|items| items.map{|i| i.date.to_s}}
+	"\\subsection{#{account}}" + 
+		account_items.zip(dates, expenditures).map{|items, date, expenditure|
 		if items.size > 0
 			"
 			\\footnotesize
@@ -546,7 +577,7 @@ EOF
 all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
 "\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 3 + "l"}}
 		#{piece.map{|r| 
-	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:budget]).map{|res| r.send(res).to_s.latex_escape
+	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:account]).map{|res| r.send(res).to_s.latex_escape
 	  #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
   }.join(" & ")
 }.join("\\\\\n")}

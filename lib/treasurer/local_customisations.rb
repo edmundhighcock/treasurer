@@ -10,7 +10,7 @@ REGULAR_TRANSFERS = {
 		house: {size: 600, period: [1, :month], monthday: 20, end: Date.parse("01/07/2013")},
   },
   [:Income, :FirstBank] =>{
-		pay: {size: 1000, period: [1, :month], monthday: 1, end: Date.parse("01/07/2014")},
+		pay: {size: 1200, period: [1, :month], monthday: 1, end: Date.parse("01/07/2014")},
   },
  
 }
@@ -19,7 +19,7 @@ REGULAR_TRANSFERS.default = {}
 
 FUTURE_TRANSFERS = {
 	[:Income, :SecondBank] =>{
-		topup: {size: 100, date: Date.parse("26/09/2010")},
+		bonus: {size: 100, date: Date.parse("26/09/2010")},
   },
   [:FirstBank, :PersonalLoans] =>{
 		payfriend: {size: 640, date: Date.parse("25/09/2010")},
@@ -33,11 +33,15 @@ FUTURE_TRANSFERS.default = {}
 
 
 BUDGETS = {
-	Monthly: {account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
-	MonthlySecondBank: {account: :SecondBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
-	Weekly: {account: :FirstBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
-	WeeklySecondBank: {account: :SecondBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
-	MyHoliday: {account: :SecondBank, period: [1, :day], monthday: nil, start: Date.parse("02/12/2013"), end: Date.parse("2/01/2014"), discretionary: false},
+	Monthly: {linked_account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
+	MonthlySecondBank: {linked_account: :SecondBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
+	Weekly: {linked_account: :FirstBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
+	WeeklySecondBank: {linked_account: :SecondBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
+	MyHoliday: {linked_account: :SecondBank, period: [1, :day], monthday: nil, start: Date.parse("02/12/2013"), end: Date.parse("2/01/2014"), discretionary: false},
+	PersonalLoans: {type: :Liability},
+	FirstBank: {type: :Asset},
+	SecondBank: {type: :Asset},
+	Pay: {linked_account: :FirstBank, type: :Income},
 }
 
 def in_date(item)
@@ -60,16 +64,16 @@ end
 def red_line(account, date)
 	case account
 	when :FirstBank
-		300
+		-350
 	when :SecondBank
-		500
+		0
 	else
 		0
 	end
 end
 
 
-def external_account
+def sub_account
 	case description
 	when /co-op|sainsbury/i 
 		:Food
@@ -85,19 +89,21 @@ def external_account
 		:Entertainment
 	when /blackwell/i
 		:Books
-	when /norries/i
-		:PersonalLoans
 	else
 		:Unknown
 	end
 end
 
-def budget
+def external_account
 	case description
 	when /Vodafone/i
 		:Monthly
+	when /norries/i
+		:PersonalLoans
+	when /my employer/i
+		:Pay
 	else
-		case external_account
+		case sub_account
 		when :Food, :Entertainment
 			:Weekly
 		when :Insurance, :Phone, :Rent

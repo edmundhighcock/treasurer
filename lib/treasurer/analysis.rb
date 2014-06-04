@@ -2,39 +2,39 @@
 class Treasurer::Reporter
 module Analysis
 	# Within the range of the report, return a list
-	# of the dates of the beginning of each budget
+	# of the dates of the beginning of each account
 	# period, along with a list of the expenditures
 	# for each period and a list of the items within
 	# each period
-	def budget_expenditure(budget, budget_info, options={})
+	def account_expenditure(account, account_info, options={})
 		dates = []
 		expenditures = []
-		budget_items = []
-		date = budget_info[:end]||@today
-		start_date = [(budget_info[:start]||@start_date), @start_date].max
+		account_items = []
+		date = account_info[:end]||@today
+		start_date = [(account_info[:start]||@start_date), @start_date].max
 		expenditure = 0
 		items_temp = []
-		items = @runner.component_run_list.values.find_all{|r| r.budget == budget and r.in_date(budget_info)}
+		items = @runner.component_run_list.values.find_all{|r| r.external_account == account and r.in_date(account_info)}
 		#ep ['items', items]
-		#ep ['budget', budget]
+		#ep ['account', account]
 		counter = 0
-		if not budget_info[:period]
+		if not account_info[:period]
 			dates.push date
-			budget_items.push items
+			account_items.push items
 			expenditures.push (items.map{|r| r.debit - r.credit}+[0]).sum
 		else
 
-			case budget_info[:period][1]
+			case account_info[:period][1]
 			when :month
 				while date > @start_date
 					items_temp += items.find_all{|r| r.date == date}
-					if date.mday == (budget_info[:monthday] or 1)
+					if date.mday == (account_info[:monthday] or 1)
 						counter +=1
-						if counter % budget_info[:period][0] == 0
+						if counter % account_info[:period][0] == 0
 							expenditure = (items_temp.map{|r| r.debit - r.credit}+[0]).sum
 							dates.push date
 							expenditures.push expenditure
-							budget_items.push items_temp
+							account_items.push items_temp
 							items_temp = []
 							expenditure = 0
 						end
@@ -44,13 +44,13 @@ module Analysis
 			when :day
 				while date > @start_date
 					items_temp += items.find_all{|r| r.date == date}
-					#expenditure += (budget_items[-1].map{|r| r.debit}+[0]).sum
+					#expenditure += (account_items[-1].map{|r| r.debit}+[0]).sum
 					counter +=1
-					if counter % budget_info[:period][0] == 0
+					if counter % account_info[:period][0] == 0
 						expenditure = (items_temp.map{|r| r.debit - r.credit}+[0]).sum
 						dates.push date
 						expenditures.push expenditure
-						budget_items.push items_temp
+						account_items.push items_temp
 						items_temp = []
 						expenditure = 0
 					end
@@ -59,45 +59,46 @@ module Analysis
 			end
 		end
 
-		[dates, expenditures, budget_items]
+		[dates, expenditures, account_items]
 
 	end
-	# Work out the average spend from the budget and include it in the budget info
-	def budgets_with_averages(budgets, options={})
-	 projected_budgets = budgets.dup
-	 projected_budgets.each{|key,v| projected_budgets[key]=projected_budgets[key].dup}
-	 projected_budgets.each do |budget, budget_info|
-		 #budget_info = budgets[budget]
-		 dates, expenditures, items = budget_expenditure(budget, budget_info)
-		 budget_info[:average] = expenditures.mean rescue 0.0
+	# Work out the average spend from the account and include it in the account info
+	def accounts_with_averages(accounts, options={})
+	 projected_accounts_info = accounts.dup
+	 projected_accounts_info.each{|key,v| projected_accounts_info[key]=projected_accounts_info[key].dup}
+	 projected_accounts_info.each do |account, account_info|
+		 #account_info = accounts[account]
+		 dates, expenditures, items = account_expenditure(account, account_info)
+		 account_info[:average] = expenditures.mean rescue 0.0
 	 end
-	 projected_budgets
+	 projected_accounts_info
 	end
-	# Work out the projected spend from the budget and include it in the budget info
-	def budgets_with_projections(budgets, options={})
-	 projected_budgets = budgets.dup
-	 projected_budgets.each{|key,v| projected_budgets[key]=projected_budgets[key].dup}
-	 projected_budgets.each do |budget, budget_info|
-		 #budget_info = budgets[budget]
-		 dates, expenditures, items = budget_expenditure(budget, budget_info)
-		 budget_info[:projection] = expenditures.mean rescue 0.0
+	# Work out the projected spend from the account and include it in the account info
+	def accounts_with_projections(accounts, options={})
+	 projected_accounts_info = accounts.dup
+	 projected_accounts_info.each{|key,v| projected_accounts_info[key]=projected_accounts_info[key].dup}
+	 projected_accounts_info.each do |account, account_info|
+		 #account_info = accounts[account]
+		 dates, expenditures, items = account_expenditure(account, account_info)
+		 account_info[:projection] = expenditures.mean rescue 0.0
 	 end
-	 projected_budgets
+	 projected_accounts_info
 	end
-	# Get a list of budgets to be included in the report
-	# i.e. budgets with non-empty expenditure
-	def get_actual_budgets
-		@actual_budgets = BUDGETS.dup
-		BUDGETS.keys.each do |budget|
-			@actual_budgets.delete(budget) if budget_expenditure(budget, BUDGETS[budget])[0].size == 0
-		end
-	end
-	# Find all discretionary budgets and estimate the future
-	# expenditure from that budget based on past
+	## Get a list of accounts to be included in the report
+	## i.e. accounts with non-empty expenditure
+	#def get_actual_accounts
+		#@actual_accounts = BUDGETS.dup
+		#BUDGETS.keys.each do |account|
+			#@actual_accounts.delete(account) if account_expenditure(account, BUDGETS[account])[0].size == 0
+		#end
+	#end
+	# Find all discretionary accounts and estimate the future
+	# expenditure from that account based on past
 	# expenditure (currently only a simple average)
-	def get_projected_budgets
-		 @projected_budgets = Hash[@actual_budgets.dup.find_all{|k,v| v[:discretionary]}]
-		 @projected_budgets = budgets_with_projections(@projected_budgets)
+	def get_projected_accounts
+		 @projected_accounts_info = Hash[BUDGETS.dup.find_all{|k,v| v[:discretionary]}]
+		 @projected_accounts_info = accounts_with_projections(@projected_accounts_info)
+		 #@projected_accounts_info = @accounts.find_all{|acc| info = BUDGETS[acc.name] and info[:discretionary]} 
 	end
 	# Calculate the sum of all items within future
 	# items that fall before end_date
@@ -117,7 +118,7 @@ module Analysis
 		sum
 	end
 	# Sum every future occurence of the given 
-	# regular items that falls within the budget period
+	# regular items that falls within the account period
 	def sum_regular(regular_items, end_date, options={})
 	  #end_date = @today + @days_ahead
 		sum = regular_items.inject(0) do |sum, (name, item)|	
@@ -179,9 +180,9 @@ module Analysis
 
 
 
-        #ep ['name2234', name, info, @projected_budget_factor] if info[:discretionary]
+        #ep ['name2234', name, info, @projected_account_factor] if info[:discretionary]
 
-				value + nunits * (info[:size]||info[:projection]*(@projected_budget_factor||1.0))
+				value + nunits * (info[:size]||info[:projection]*(@projected_account_factor||1.0))
 
 			end
 			sum + value
