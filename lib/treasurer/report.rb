@@ -3,6 +3,11 @@ class Float
 		sprintf("%.2f", self)
 	end
 end
+class Date
+	def inspect
+		"Date.parse('#{to_s}')"
+	end
+end
 # Some thoughts on double entry accounting: 
 #
 # assets - liabilities = equity
@@ -56,8 +61,9 @@ class Reporter
 	attr_reader :in_limit_discretionary_account_factor
 	attr_reader :stable_discretionary_account_factor
 	attr_accessor :projected_account_factor
-	attr_accessor :equity
-	attr_accessor :projected_accounts_info
+	attr_reader :equity
+	attr_reader :projected_accounts_info
+	attr_reader :days_before 
 	def initialize(runner, options)
 		@runner = runner
 		@days_ahead = options[:days_ahead]||180
@@ -65,6 +71,10 @@ class Reporter
 		@today = options[:today]||Date.today
 		@start_date = @today - @days_before
 		@runs = runner.component_run_list.values
+
+		if run = @runs.find{|r| not r.external_account}
+			raise "External_account not specified for #{run.data_line}" 
+		end
 		@indateruns = @runs.find_all{|r| r.days_ago(@today) < @days_before}
 		#p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq 
 	
@@ -92,6 +102,8 @@ class Reporter
 		report << '\end{multicols}'
 		##report << account_resolutions
 		#report << account_breakdown
+		
+		report << assumptions
 		report << transactions_by_account
 		report << footer
 
@@ -122,11 +134,11 @@ class Reporter
 			@runs = runs.find_all{|r| (@external ? r.external_account : r.account) == name}
 		end
 		def sub_accounts
-			@sub_accounts ||= @runs.map{|r| r.sub_account}.uniq.map{|acc| SubAccount.new(acc, @reporter, @runner, @runs, @external)}
+			@sub_accounts ||= @runs.map{|r| r.sub_account}.uniq.compact.map{|acc| SubAccount.new(acc, @reporter, @runner, @runs, @external)}
 		end
 		def type
 			#account_type(name)
-			if BUDGETS[name] and type = BUDGETS[name][:type]
+			if ACCOUNT_INFO[name] and type = ACCOUNT_INFO[name][:type]
 				type
 			else
 				:Expense
@@ -139,13 +151,19 @@ class Reporter
 				0.0
 			end
 		end
+		def report_start
+			@reporter.today - @reporter.days_before
+	  end
+		def opening_date
+			(info && info[:start]) || report_start
+		end
 		def balance(date = @reporter.today) 
 			#if !date
 				#@runs.sort_by{|r| r.date}[-1].balance
 			if @external
 				#p ['name is ', name, type]
 				#
-				@runs.find_all{|r| r.date < date}.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
+				@runs.find_all{|r| r.date <= date and r.date >= opening_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
 				 #Temporary....
 				#0.0
 			else
@@ -183,7 +201,7 @@ EOF
 			info and info[:discretionary]
 		end
 		def info
-			BUDGETS[name]
+			ACCOUNT_INFO[name]
 		end
 		def projected_balance(date)
 			 #return 0.0 if @external # Temporary Hack
@@ -459,42 +477,46 @@ EOF
 	def account_expenditure_graphs
 		<<EOF
 \\section{Expenditure by Account Period}
-#{account_and_transfer_graphs(Hash[@expense_accounts.find_all{|acc| acc.info}.map{|acc| [acc.name, acc.info]}], {})}
+#{account_and_transfer_graphs(Hash[@expense_accounts.find_all{|acc| acc.info and acc.info[:period]}.map{|acc| [acc.name, acc.info]}], {})}
 EOF
 	end
 	def account_and_transfer_graphs(accounts, options)
 "#{accounts.map{|account, account_info| 
 #ep ['accountbadf', account, account_info]
-dates, expenditures, items = account_expenditure(account, account_info)
-#ep ['account', account, dates, expenditures]
-kit = GraphKit.quick_create([dates.map{|d| d.to_time.to_i}, expenditures])
-kit.data.each{|dk| dk.gp.with="boxes"}
-kit.gp.style = "fill solid"
-kit.xlabel = nil
-kit.ylabel = "Expenditure"
-unless options[:transfers]
- kits = accounts_with_averages({account => account_info}).map{|account, account_info| 
-	 #ep 'Budget is ', account
-	 kit2 = GraphKit.quick_create([
-			[dates[0], dates[-1]].map{|d| d.to_time.to_i}, 
-			[account_info[:average], account_info[:average]]
-	 ])
-	 kit2.data[0].gp.with = 'lp lw 4'
-	 kit2
-	}
-	#$debug_gnuplot = true
-	#kits.sum.gnuplot
-	kit += kits.sum
-
+	dates, expenditures, items = account_expenditure(account, account_info)
+if dates.size == 0
+	""
 else
-	kit.data[0].y.data.map!{|expen| expen*-1.0}
+	#ep ['account', account, dates, expenditures]
+	kit = GraphKit.quick_create([dates.map{|d| d.to_time.to_i}, expenditures])
+	kit.data.each{|dk| dk.gp.with="boxes"}
+	kit.gp.style = "fill solid"
+	kit.xlabel = nil
+	kit.ylabel = "Expenditure"
+	unless options[:transfers]
+	 kits = accounts_with_averages({account => account_info}).map{|account, account_info| 
+		 #ep 'Budget is ', account
+		 kit2 = GraphKit.quick_create([
+				[dates[0], dates[-1]].map{|d| d.to_time.to_i}, 
+				[account_info[:average], account_info[:average]]
+		 ])
+		 kit2.data[0].gp.with = 'lp lw 4'
+		 kit2
+		}
+		#$debug_gnuplot = true
+		#kits.sum.gnuplot
+		kit += kits.sum
+
+	else
+		kit.data[0].y.data.map!{|expen| expen*-1.0}
+	end
+	kit.title = "#{account} Expenditure with average (Total = #{kit.data[0].y.data.sum})"
+	CodeRunner::Budget.kit_time_format_x(kit)
+	#kit.gnuplot
+	#ep ['kit1122', account, kit]
+	kit.gnuplot_write("#{account}.eps")
+	"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
 end
-kit.title = "#{account} Expenditure with average (Total = #{kit.data[0].y.data.sum})"
-CodeRunner::Budget.kit_time_format_x(kit)
-#kit.gnuplot
-#ep ['kit1122', account, kit]
-kit.gnuplot_write("#{account}.eps")
-"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
 }.join("\n\n")
 }"
 	end
@@ -549,6 +571,19 @@ This section sums items from accounts drawn from an alternate account, i.e. it d
 "
 }.join("\n\n")
 }
+EOF
+	end
+	def assumptions
+	  <<EOF
+		\\section{Assumptions for Projection}
+		\\subsection{Regular Transfers}
+		\\begin{lstlisting}[language=ruby]
+#{REGULAR_TRANSFERS.pretty_inspect.latex_escape}
+		\\end{lstlisting}
+		\\subsection{One-off Transfers}
+		\\begin{lstlisting}[language=ruby]
+#{FUTURE_TRANSFERS.pretty_inspect.latex_escape}
+		\\end{lstlisting}
 EOF
 	end
 	def account_breakdown
@@ -614,8 +649,14 @@ EOF
 \\usepackage{tabulary}
 \\usepackage{graphicx}
 \\usepackage{multicol}
-%\\usepackage{hyperlink}
+\\usepackage{hyperref}
+\\usepackage{xcolor,listings}
 \\newcommand\\Tstrut{\\rule{0pt}{2.8ex}}
+\\lstset{%
+basicstyle=\\ttfamily\\color{black},
+identifierstyle = \\ttfamily\\color{purple},
+keywordstyle=\\ttfamily\\color{blue},
+stringstyle=\\color{orange}}
 \\begin{document}
 \\title{#{@days_before}-day Budget Report}
 \\maketitle

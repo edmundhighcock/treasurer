@@ -87,18 +87,18 @@ module Analysis
 	## Get a list of accounts to be included in the report
 	## i.e. accounts with non-empty expenditure
 	#def get_actual_accounts
-		#@actual_accounts = BUDGETS.dup
-		#BUDGETS.keys.each do |account|
-			#@actual_accounts.delete(account) if account_expenditure(account, BUDGETS[account])[0].size == 0
+		#@actual_accounts = ACCOUNT_INFO.dup
+		#ACCOUNT_INFO.keys.each do |account|
+			#@actual_accounts.delete(account) if account_expenditure(account, ACCOUNT_INFO[account])[0].size == 0
 		#end
 	#end
 	# Find all discretionary accounts and estimate the future
 	# expenditure from that account based on past
 	# expenditure (currently only a simple average)
 	def get_projected_accounts
-		 @projected_accounts_info = Hash[BUDGETS.dup.find_all{|k,v| v[:discretionary]}]
+		 @projected_accounts_info = Hash[ACCOUNT_INFO.dup.find_all{|k,v| v[:discretionary]}]
 		 @projected_accounts_info = accounts_with_projections(@projected_accounts_info)
-		 #@projected_accounts_info = @accounts.find_all{|acc| info = BUDGETS[acc.name] and info[:discretionary]} 
+		 #@projected_accounts_info = @accounts.find_all{|acc| info = ACCOUNT_INFO[acc.name] and info[:discretionary]} 
 	end
 	# Calculate the sum of all items within future
 	# items that fall before end_date

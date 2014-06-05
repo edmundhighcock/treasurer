@@ -32,7 +32,7 @@ FUTURE_TRANSFERS.default = {}
 
 
 
-BUDGETS = {
+ACCOUNT_INFO = {
 	Monthly: {linked_account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
 	MonthlySecondBank: {linked_account: :SecondBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
 	Weekly: {linked_account: :FirstBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
