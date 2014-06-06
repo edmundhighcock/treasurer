@@ -79,8 +79,7 @@ class Reporter
 		#p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq 
 	
 	end
-	def report
-		#get_actual_accounts
+	def generate_accounts
 	  accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, false)} 
 	  external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, true)} 
 		@accounts = accounts + external_accounts
@@ -89,6 +88,10 @@ class Reporter
 		#p ['projected_accounts_info', @projected_accounts_info]
 		#exit
 		@accounts.unshift (@equity = Equity.new(self, @runner, @accounts))
+	end
+	def report
+		generate_accounts
+		#get_actual_accounts
 		get_in_limit_discretionary_account_factor
 		get_stable_discretionary_account_factor
 		report = ""

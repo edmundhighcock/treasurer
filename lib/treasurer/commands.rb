@@ -19,9 +19,12 @@ class << self
 		raise "This folder has not been set up to use with Treasurer; please initialise a folder with treasurer init" unless FileTest.exist? '.code_runner_script_defaults.rb' and eval(File.read('.code_runner_script_defaults.rb'))[:code] == 'budget'
 	end
 	def create_report(copts = {})
+		reporter = fetch_reporter(copts)
+		reporter.report()
+	end
+	def fetch_reporter(copts = {})
 		load_treasurer_folder
 		reporter = Reporter.new(CodeRunner.fetch_runner(h: :component), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t])
-		reporter.report()
 	end
 	def init_root_folder(folder, copts={})
 		raise "Folder already exists" if FileTest.exist? folder
