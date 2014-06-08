@@ -21,7 +21,7 @@ module Analysis
 		if not account_info[:period]
 			dates.push date
 			account_items.push items
-			expenditures.push (items.map{|r| r.debit - r.credit}+[0]).sum
+			expenditures.push (items.map{|r| (r.deposit - r.withdrawal) * (account_info[:external] ? -1 : 1)}+[0]).sum
 		else
 
 			case account_info[:period][1]
@@ -31,7 +31,7 @@ module Analysis
 					if date.mday == (account_info[:monthday] or 1)
 						counter +=1
 						if counter % account_info[:period][0] == 0
-							expenditure = (items_temp.map{|r| r.debit - r.credit}+[0]).sum
+							expenditure = (items_temp.map{|r| (r.deposit - r.withdrawal) * (account_info[:external] ? -1 : 1)}+[0]).sum
 							dates.push date
 							expenditures.push expenditure
 							account_items.push items_temp
@@ -47,7 +47,7 @@ module Analysis
 					#expenditure += (account_items[-1].map{|r| r.debit}+[0]).sum
 					counter +=1
 					if counter % account_info[:period][0] == 0
-						expenditure = (items_temp.map{|r| r.debit - r.credit}+[0]).sum
+						expenditure = (items_temp.map{|r| (r.deposit - r.withdrawal) * (account_info[:external] ? -1 : 1)}+[0]).sum
 						dates.push date
 						expenditures.push expenditure
 						account_items.push items_temp

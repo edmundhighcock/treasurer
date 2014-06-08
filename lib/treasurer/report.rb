@@ -61,6 +61,7 @@ class Reporter
 	attr_reader :in_limit_discretionary_account_factor
 	attr_reader :stable_discretionary_account_factor
 	attr_accessor :projected_account_factor
+	attr_reader :accounts
 	attr_reader :equity
 	attr_reader :projected_accounts_info
 	attr_reader :days_before 
@@ -123,6 +124,7 @@ class Reporter
 			#@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
 			@external = external
 			@runs = runs.find_all{|r| r.sub_account  == name}
+			info[:external] = external if info
 			#ep ['sub_accounts333', name, @runs.size, runs.size]
 		end
 	end
@@ -135,6 +137,7 @@ class Reporter
 			#@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
 			@external = external
 			@runs = runs.find_all{|r| (@external ? r.external_account : r.account) == name}
+			info[:external] = external if info
 		end
 		def sub_accounts
 			@sub_accounts ||= @runs.map{|r| r.sub_account}.uniq.compact.map{|acc| SubAccount.new(acc, @reporter, @runner, @runs, @external)}
@@ -158,27 +161,36 @@ class Reporter
 			@reporter.today - @reporter.days_before
 	  end
 		def opening_date
-			(info && info[:start]) || report_start
+			(info && info[:start]) || @runs.map{|r| r.date}.min
+		end
+		def opening_balance
+			(info && info[:opening_balance]) || 0.0
+		end
+		def has_balance?
+			not @runs.find{|r| not r.has_balance?} 
 		end
 		def balance(date = @reporter.today) 
 			#if !date
 				#@runs.sort_by{|r| r.date}[-1].balance
-			if @external
+			if @external or not has_balance?
 				#p ['name is ', name, type]
 				#
-				@runs.find_all{|r| r.date <= date and r.date >= opening_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0
+				opening_balance + (@runs.find_all{|r| r.date <= date and r.date >= opening_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0)
 				 #Temporary....
 				#0.0
 			else
-				@runs.sort_by{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}[0].balance
+				nearest_time = @runs.map{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}.sort[0]
+				@runs.find_all{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs == nearest_time}.sort_by{|r| r.id}[-1].balance
 			end
 		end
 		def deposited(today, days_before, &block)
 				p ['name22 is ', name, type, @runs.size]
-			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
+			#@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
+			@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external) ? r.withdrawal : r.deposit }.sum || 0
 		end
 		def withdrawn(today, days_before)
-			@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external ^ ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
+			#@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
+			@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external) ? r.deposit : r.withdrawal }.sum || 0
 		end
 		
 		def summary_table(today, days_before)
@@ -204,7 +216,7 @@ EOF
 			info and info[:discretionary]
 		end
 		def info
-			ACCOUNT_INFO[name]
+			ACCOUNT_INFO[name] ||= {}
 		end
 		def projected_balance(date)
 			 #return 0.0 if @external # Temporary Hack
@@ -246,7 +258,7 @@ EOF
 		# balance of the account
 		def write_balance_graph(today, days_before, days_ahead)
 			 #accshort = name.gsub(/\s/, '')
-			 if not (@external or type == :Equity)
+			 if not (@external or type == :Equity or not has_balance?)
 				 kit = @runner.graphkit(['date.to_time.to_i', 'balance'], {conditions: "account == #{name.inspect} and days_ago(Date.parse(#{today.to_s.inspect})) < #{days_before} and days_ago(Date.parse(#{today.to_s.inspect})) > -1", sort: '[date, id]'})
 			 else
 				 pastdates = (today-days_before..today).to_a
@@ -274,16 +286,18 @@ EOF
 			 kit.xlabel = %['Date' offset 0,-2]
 			 kit.xlabel = nil
 			 kit.ylabel = "Balance"
+			 
 
-			 kit.data[0].gp.title = 'Limit'
+			 #kit.data[0].gp.title = 'Limit'
 			 kit.data[1].gp.title = 'Previous'
 			 kit.data[2].gp.title = '0 GBP Discretionary'
 			 kit.data[2].gp.title = 'Projection'
-			 #kit.data[3].gp.title = 'Limit'
-			 #kit.data[4].gp.title = 'Stable'
+			 kit.data[3].gp.title = 'Limit'
+			 kit.data[4].gp.title = 'Stable'
 			 kit.data.each{|dk| dk.gp.with = "lp"}
 			 kit.gp.key = ' bottom left '
 
+			 #(p kit; STDIN.gets) if name == :LloydsCreditCard
 			 CodeRunner::Budget.kit_time_format_x(kit)
 
 			 (kit).gnuplot_write("#{name}_balance.eps", size: "4.0in,3.0in")
@@ -388,7 +402,9 @@ EOF
 \\subsection{Budget Period}
 #{expense_pie_chart('accountperiod', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
 \\subsection{Last Week}
-#{expense_pie_chart('lastweekexpenses', @expense_accounts){|r| p ['r.daysago', r.days_ago(@today)]; r.days_ago(@today) < 7}}
+#{expense_pie_chart('lastweekexpenses', @expense_accounts){|r| 
+   #p ['r.daysago', r.days_ago(@today)]; 
+   r.days_ago(@today) < 7}}
 \\subsection{Last Month}
 #{expense_pie_chart('lastmonthexpenses', @expense_accounts){|r| r.days_ago(@today) < 30}}
 \\subsection{Last Year}
@@ -433,7 +449,7 @@ EOF
 			@in_limit_discretionary_account_factor = @projected_account_factor
 			break if (@projected_account_factor == 0.0 or ok == true)
 			@projected_account_factor -= 0.01
-			@projected_account_factor -= 0.1
+			@projected_account_factor -= 0.04
 			ep ['projected_account_factor', @projected_account_factor]
 		end
 		@projected_account_factor = nil
