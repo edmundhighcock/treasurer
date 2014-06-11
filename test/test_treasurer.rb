@@ -1,6 +1,10 @@
 require 'helper'
+require 'ruby-prof'
+#require 'ruby-prof/test'
 
-class TestTreasurer < Test::Unit::TestCase
+class TestTreaurer < Test::Unit::TestCase
+	#include RubyProf::Test
+	#PROFILE_OPTIONS[:
 	def testfolder
 		'test/myaccount'
 	end
@@ -13,7 +17,12 @@ class TestTreasurer < Test::Unit::TestCase
 			Treasurer.add_file('../otheraccountstatement.csv', 'SecondBank', {})
 			Treasurer.add_folder_of_files('../multiple')
 			Treasurer.status h: :component
+			RubyProf.start
 			Treasurer.create_report t: Date.parse('2010-09-07'), b: 40, a: 35
+			result = RubyProf.stop
+			result.eliminate_methods!([/Array#map/, /Array#each/])
+			printer = RubyProf::GraphHtmlPrinter.new(result)
+			File.open('timing.html', 'w'){|f| printer.print(f, {})}
 			reporter = Treasurer.fetch_reporter(t: Date.parse('2010-09-07'), b: 40, a: 35)
 			reporter.generate_accounts
 			assert_equal(382.08, reporter.equity.balance.round(2))

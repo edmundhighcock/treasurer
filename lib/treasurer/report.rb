@@ -170,6 +170,7 @@ class Reporter
 			not @runs.find{|r| not r.has_balance?} 
 		end
 		def balance(date = @reporter.today) 
+			date_i = date.to_datetime.to_time.to_i
 			#if !date
 				#@runs.sort_by{|r| r.date}[-1].balance
 			if @external or not has_balance?
@@ -179,8 +180,8 @@ class Reporter
 				 #Temporary....
 				#0.0
 			else
-				nearest_time = @runs.map{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs}.sort[0]
-				@runs.find_all{|r| (r.date.to_datetime.to_time.to_i - date.to_datetime.to_time.to_i).to_f.abs == nearest_time}.sort_by{|r| r.id}[-1].balance
+				nearest_time = @runs.map{|r| (r.date_i - date_i).to_f.abs}.sort[0]
+				@runs.find_all{|r| (r.date_i - date_i).to_f.abs == nearest_time}.sort_by{|r| r.id}[-1].balance
 			end
 		end
 		def deposited(today, days_before, &block)
@@ -202,6 +203,12 @@ Balance & #{balance} \\\\
 Deposited & #{deposited(today, days_before)} \\\\
 Withdrawn & #{withdrawn(today, days_before)} \\\\
 \\end{tabulary}
+EOF
+		end
+		def summary_line(today, days_before)
+
+			<<EOF
+#{name} & #{balance} & #{deposited(today, days_before)} & #{withdrawn(today, days_before)} 
 EOF
 		end
 		def money_in_sign
@@ -365,22 +372,24 @@ Balance & #{balance} \\\\
 \\end{tabulary}
 EOF
 		end
+		def summary_line(today, days_before)
+			"Equity & #{balance(today)} &  & "
+		end
 	end
 	def account_summaries
 		#ep 'accounts', @accounts.map{|a| a.name}
 		
 		<<EOF
 \\section{Summary of Accounts}
-\\subsection{Equity}
-#{@accounts.find{|acc| acc.type == :Equity }.summary_table(@today, @days_before)}
-\\subsection{Assets}
-#{@accounts.find_all{|acc| acc.type == :Asset }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
-\\subsection{Liabilities}
-#{@accounts.find_all{|acc| acc.type == :Liability }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
-\\subsection{Income}
-#{@accounts.find_all{|acc| acc.type == :Income }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
-\\subsection{Expenses}
-#{@accounts.find_all{|acc| acc.type == :Expense }.map{|acc| acc.summary_table(@today, @days_before)}.join("\n\n") }
+#{[:Equity, :Asset, :Liability, :Income, :Expense].map{|type|
+		"\\subsection{#{type}}
+    \\begin{tabulary}{0.49\\textwidth}{ R | c | c | c}
+		Account & Balance & Deposited & Withdrawn \\\\
+		\\hline
+		\\Tstrut
+    #{@accounts.find_all{|acc| acc.type == type }.map{|acc| acc.summary_line(@today, @days_before)}.join("\\\\\n")}
+		\\end{tabulary}"
+}.join("\n\n")}
 EOF
 	end
 	def account_balance_graphs
