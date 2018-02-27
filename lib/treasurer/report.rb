@@ -97,13 +97,13 @@ class Reporter
 		get_stable_discretionary_account_factor
 		report = ""
 		report << header
-		report << '\begin{multicols}{2}'
+		#report << '\begin{multicols}{2}'
 		report << account_summaries
 		report << discretionary_account_table
 		report << account_balance_graphs
 		report << expense_account_summary
 		report << account_expenditure_graphs
-		report << '\end{multicols}'
+		#report << '\end{multicols}'
 		##report << account_resolutions
 		#report << account_breakdown
 		
@@ -112,7 +112,7 @@ class Reporter
 		report << footer
 
 		File.open('report.tex', 'w'){|f| f.puts report}
-		system "latex report.tex && latex report.tex"
+		system "pdflatex report.tex && pdflatex report.tex"
 	end
 	class Account
 	end
@@ -307,12 +307,15 @@ EOF
 			 #(p kit; STDIN.gets) if name == :LloydsCreditCard
 			 CodeRunner::Budget.kit_time_format_x(kit)
 
-			 (kit).gnuplot_write("#{name}_balance.eps", size: "4.0in,3.0in")
+			 (kit).gnuplot_write("#{name}_balance.eps", size: "4.0in,2.0in") #, latex: true)
+  #%x[epspdf #{name}_balance.eps]
 		end
 		# A string to include the balance graph in the document
 		def balance_graph_string
 			 #accshort = name.gsub(/\s/, '')
-       "\\begin{center}\\includegraphics[width=3.0in]{#{name}_balance.eps}\\end{center}"
+       #"\\begin{center}\\includegraphics[width=3.0in]{#{name}_balance.eps}\\end{center}"
+      #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}_balance.eps}\\end{center}"
+      "\\myfigure{#{name}_balance.eps}"
 		end
 	end
 	class Equity < Account
@@ -383,7 +386,7 @@ EOF
 \\section{Summary of Accounts}
 #{[:Equity, :Asset, :Liability, :Income, :Expense].map{|type|
 		"\\subsection{#{type}}
-    \\begin{tabulary}{0.49\\textwidth}{ R | c | c | c}
+    \\begin{tabulary}{0.9\\textwidth}{ R | c | c | c}
 		Account & Balance & Deposited & Withdrawn \\\\
 		\\hline
 		\\Tstrut
@@ -396,7 +399,7 @@ EOF
 		<<EOF
 \\section{Graphs of Recent Balances}
 #{[:Equity, :Asset, :Liability].map{|typ|
- "\\subsection{#{typ}}" + 
+ "\\subsection{#{typ}}\\vspace{3em}" + 
  @accounts.find_all{|acc| acc.type == typ}.map{|acc|
 	 acc.write_balance_graph(@today, @days_before, @days_ahead)
 	 acc.balance_graph_string
@@ -441,9 +444,12 @@ EOF
 		#pp ['kit222', kit, labels]
 		i = -1
 		kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 315"
-		kit.gnuplot_write("#{name}.eps")
+    kit.gnuplot_write("#{name}.eps", size: "4.0in,2.0in")
+  #%x[ps2eps #{name}.ps]
 
-    "\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
+    #"\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
+    #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}.eps}\\vspace{1em}\\end{center}"
+    "\\myfigure{#{name}.eps}"
 	end
 	def get_in_limit_discretionary_account_factor
 		@projected_account_factor = 1.0
@@ -490,7 +496,7 @@ EOF
 
 		<<EOF
 \\section{Discretionary Budget Summary}
-\\begin{tabulary}{0.5\\textwidth}{ R | c  c  c c  }
+\\begin{tabulary}{0.9\\textwidth}{ R | c  c  c c  }
 Budget & Average & Projection & Limit & Stable \\\\
 #{discretionary_accounts.map{|account, info|
 		#ep info
@@ -542,8 +548,11 @@ else
 	CodeRunner::Budget.kit_time_format_x(kit)
 	#kit.gnuplot
 	#ep ['kit1122', account, kit]
-	kit.gnuplot_write("#{account}.eps")
-	"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
+  kit.gnuplot_write("#{account}.eps", size: "4.0in,2.0in")
+  #%x[ps2eps #{account}.ps]
+	#"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
+  #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{account}.eps}\\vspace{1em}\\end{center}"
+  "\\myfigure{#{account}.eps}"
 end
 }.join("\n\n")
 }"
@@ -624,7 +633,7 @@ EOF
 		account_items.zip(dates, expenditures).map{|items, date, expenditure|
 		if items.size > 0
 			"
-			\\footnotesize
+			\\tiny
 			\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 2 + " c " }}
 			%\\hline
 			#{date.to_s.latex_escape} & & & Total & #{expenditure} &  \\\\
@@ -655,11 +664,11 @@ EOF
 \\section{Recent Transactions}
 #{@accounts.find_all{|acc| not acc.type == :Equity}.sort_by{|acc| acc.external ? 0 : 1}.map{|acc| 
 	"\\subsection{#{acc.name}}
-\\footnotesize
-#{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}.sort_by{|r| [r.date, r.id]}.reverse
+\\tiny
+  #{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}.sort_by{|r| [r.sub_account, r.date, r.id]}.reverse
 #ep ['acc', acc, 'ids', all.map{|r| r.id}, 'size', all.size]
 all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
-"\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 3 + "l"}}
+"\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " l " + " r " * 3 + "l"}}
 		#{piece.map{|r| 
 	  (CodeRunner::Budget.rcp.component_results - [:sc] + [:sub_account]).map{|res| r.send(res).to_s.latex_escape
 	  #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
@@ -672,14 +681,22 @@ EOF
 
 	def header
 		<<EOF
-\\documentclass{article}
-\\usepackage[cm]{fullpage}
+\\documentclass[a5paper]{article}
+\\usepackage[scale=0.9]{geometry}
+%\\usepackage[cm]{fullpage}
 \\usepackage{tabulary}
 \\usepackage{graphicx}
 \\usepackage{multicol}
 \\usepackage{hyperref}
 \\usepackage{xcolor,listings}
 \\newcommand\\Tstrut{\\rule{0pt}{2.8ex}}
+\\newcommand\\myfigure[1]{\\vspace*{0em}\\begin{center}
+
+\\includegraphics[width=0.9\\textwidth]{#1}
+
+\\end{center}\\vspace*{0em}
+
+}
 \\lstset{%
 basicstyle=\\ttfamily\\color{black},
 identifierstyle = \\ttfamily\\color{purple},
