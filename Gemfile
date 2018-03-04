@@ -1,7 +1,7 @@
 source "http://rubygems.org"
 # Add dependencies required to use your gem here.
 # Example:
-#   gem "activesupport", ">= 2.3.5"
+gem "activesupport", ">= 5.0.0"
     gem "coderunner", ">= 0.14.16"
     gem "budgetcrmod", ">= 0.2.0"
     gem "command-line-flunky", ">= 1.0.0"

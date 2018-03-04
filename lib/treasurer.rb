@@ -47,6 +47,7 @@ EOF
 		['add_folder_of_files', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
 		['init_root_folder', 'init', 1,  'Create a new folder and initialise it for storing treasurer data.', ['folder'], []],
 		['create_report', 'report', 0,  'Generate a detailed report (typeset using latex) showing account activity, spending by category, and projections.', [], [:a, :b, :t]],
+    ['status', 'st', 0,  'Print the transactions to screen..', [], [:C]],
 
 	]
 	
@@ -56,6 +57,8 @@ EOF
 		['--after', '-a', GetoptLong::REQUIRED_ARGUMENT, 'Calculate projections up till given number of days after today'],		
 		['--before', '-b', GetoptLong::REQUIRED_ARGUMENT, 'Start budget from given number of days before today'],		
 		['--today', '-t', GetoptLong::REQUIRED_ARGUMENT, "Specify today's date, i.e. change the date on which the report is generated."],		
+		['--coderunner', '-C', GetoptLong::REQUIRED_ARGUMENT, "Options to pass to CodeRunner, the engine which manages the transaction data."],		
+		['--month', '-m', GetoptLong::REQUIRED_ARGUMENT, "Overrides -a, -b and -t and produces a report for a given month"],		
 		#['--formats', '-f', GetoptLong::REQUIRED_ARGUMENT, "A list of formats pertaining to the various input and output files (in the order which they appear), separated by commas. If they are all the same, only one value may be given. If a value is left empty (i.e. there are two commas in a row) then the previous value will be used. Currently supported formats are #{SUPPORTED_FORMATS.inspect}. "],		
 
 		]
@@ -108,6 +111,7 @@ require 'coderunner'
 require 'treasurer/commands.rb'
 require 'treasurer/report.rb'
 require 'treasurer/analysis.rb'
+require 'treasurer/accounts.rb'
 
 
 ######################################

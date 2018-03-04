@@ -14,7 +14,7 @@ module Analysis
 		#start_date = [(account.info[:start]||@start_date), @start_date].max
 		expenditure = 0
 		items_temp = []
-    items = @runner.component_run_list.values.find_all{|r| r.external_account == account.name and r.in_date(account.info)}
+    items = @runner.component_run_list.values.find_all{|r| r.external_account == account.name and r.in_date(account.info) and @accounts_hash[r.account].currency == account.currency}
     #ep ['items', items.map{|i| i.date}]
     #ep ['account', account.name_c]
 		counter = 0
@@ -69,7 +69,7 @@ module Analysis
 	 projected_accounts_info.each do |account, account_info|
 		 #account_info = accounts[account]
 		 _dates, expenditures, _items = account_expenditure(account, account_info)
-		 account_info[:average] = expenditures.mean rescue 0.0
+     account.average = expenditures.mean rescue 0.0
 	 end
 	 projected_accounts_info
 	end
@@ -80,7 +80,7 @@ module Analysis
 	 projected_accounts.each do |account|
 		 #account_info = accounts[account]
 		 _dates, expenditures, _items = account_expenditure(account)
-		 account.info[:projection] = expenditures.mean rescue 0.0
+		 account.projection = expenditures.mean rescue 0.0
 	 end
    projected_accounts.map{|acc| [acc, acc.info]}.to_h
 	end
@@ -123,7 +123,7 @@ module Analysis
 	# regular items that falls within the account period
 	def sum_regular(regular_items, end_date, options={})
 	  #end_date = @today + @days_ahead
-		sum = regular_items.inject(0) do |sum, (name, item)|	
+		sum_out = regular_items.inject(0) do |sum, (account, item)|	
 			item = [item] unless item.kind_of? Array
 #			  ep item
 			value = item.inject(0) do |value,info|
@@ -184,10 +184,10 @@ module Analysis
 
         #ep ['name2234', name, info, @projected_account_factor] if info[:discretionary]
 
-				value + nunits * (info[:size]||info[:projection]*(@projected_account_factor||1.0))
+        value + nunits * (info[:size]||account.projection*(@projected_account_factor||1.0))
 
 			end
-			sum + value
+			sum_out + value
 			#(rcp.excluding? and rcp.excluding.include?(name)) ? sum : sum + value
 		end
 		sum

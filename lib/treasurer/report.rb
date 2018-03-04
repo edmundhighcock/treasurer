@@ -1,3 +1,5 @@
+require 'active_support/core_ext/integer/inflections'
+
 class Float
   def to_s
     sprintf("%.2f", self)
@@ -71,6 +73,7 @@ class Treasurer
       @days_before = options[:days_before]||360
       @today = options[:today]||Date.today
       @start_date = @today - @days_before
+      @end_date = @today + @days_ahead
       @runs = runner.component_run_list.values
       @currencies = ACCOUNT_INFO.map{|k,v| v[:currencies]}.flatten.uniq
 
@@ -78,6 +81,8 @@ class Treasurer
         raise "External_account not specified for #{run.data_line}" 
       end
       @indateruns = @runs.find_all{|r| r.days_ago(@today) < @days_before}
+      @stable_discretionary_account_factors = {}
+      @in_limit_discretionary_account_factors = {}
       #p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq 
 
     end
@@ -99,21 +104,31 @@ class Treasurer
       external_accounts = external_accounts.flatten
       @accounts = accounts + external_accounts
       @expense_accounts = @accounts.find_all{|acc| acc.type == :Expense}
+      @accounts_hash = accounts.map{|acc| [acc.name, acc]}.to_h
       get_projected_accounts
       #p ['projected_accounts_info', @projected_accounts_info]
       #exit
-      @accounts.unshift (@equity = Equity.new(self, @runner, @accounts))
+      @equities = currency_list.map do |currency|
+        equity = Equity.new(self, @runner, @accounts.find_all{|acc| acc.currency == currency}, currency: currency)
+        @accounts.unshift (equity)
+        [currency, equity]
+      end
+      @equities = @equities.to_h
     end
     def report
       generate_accounts
       #get_actual_accounts
-      get_in_limit_discretionary_account_factor
-      get_stable_discretionary_account_factor
+      currency_list.each do |currency|
+        get_in_limit_discretionary_account_factor(currency)
+        get_stable_discretionary_account_factor(currency)
+      end
       report = ""
       report << header
       #report << '\begin{multicols}{2}'
       report << account_summaries
-      report << discretionary_account_table
+      currency_list.each do |currency|
+        report << discretionary_account_table(currency)
+      end
       report << account_balance_graphs
       report << expense_account_summary
       report << account_expenditure_graphs
@@ -126,7 +141,7 @@ class Treasurer
       report << footer
 
       File.open('report.tex', 'w'){|f| f.puts report}
-      system "pdflatex report.tex && pdflatex report.tex"
+      system "lualatex report.tex && lualatex report.tex"
     end
     class Account
     end
@@ -222,6 +237,9 @@ class Treasurer
       def withdrawn(today, days_before)
         #@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
         @runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external) ? r.deposit : r.withdrawal }.sum || 0
+      end
+      def currency
+        @currency || (info[:currencies] && info[:currencies][0])
       end
       def currency_label
         if @currency
@@ -333,7 +351,7 @@ EOF
         kit += (kit2 + kit4 + kit5)
         #kit += (kit2)
         kit = kit3 + kit
-        kit.title = "Balance for #{name}"
+        kit.title = "Balance for #{name_c}"
         kit.xlabel = %['Date' offset 0,-2]
         kit.xlabel = nil
         kit.ylabel = "Balance"
@@ -345,13 +363,17 @@ EOF
         kit.data[2].gp.title = 'Projection'
         kit.data[3].gp.title = 'Limit'
         kit.data[4].gp.title = 'Stable'
-        kit.data.each{|dk| dk.gp.with = "lp"}
+        kit.data.each{|dk| dk.gp.with = "l lw 5"}
         kit.gp.key = ' bottom left '
+        kit.gp.key = ' rmargin '
 
         #(p kit; STDIN.gets) if name == :LloydsCreditCard
         CodeRunner::Budget.kit_time_format_x(kit)
 
-        (kit).gnuplot_write("#{name_c}_balance.eps", size: "4.0in,2.0in") #, latex: true)
+        fork do
+          (kit).gnuplot_write("#{name_c_file}_balance.eps", size: "4.0in,1.5in") #, latex: true)
+          %x[epspdf #{name_c_file}_balance.eps]
+        end
         #%x[epspdf #{name}_balance.eps]
       end
       # A string to include the balance graph in the document
@@ -359,14 +381,15 @@ EOF
         #accshort = name.gsub(/\s/, '')
         #"\\begin{center}\\includegraphics[width=3.0in]{#{name}_balance.eps}\\end{center}"
         #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}_balance.eps}\\end{center}"
-        "\\myfigure{#{name_c}_balance.eps}"
+        "\\myfigure{#{name_c_file}_balance.pdf}"
       end
     end
     class Equity < Account
-      def initialize(reporter, runner, accounts)
+      def initialize(reporter, runner, accounts, options={})
         @reporter = reporter
         @runner = runner
         @accounts = accounts #.find_all{|acc| not acc.external}
+        @currency = options[:currency]
       end
       def type
         :Equity
@@ -420,7 +443,7 @@ Balance & #{balance} \\\\
 EOF
       end
       def summary_line(today, days_before)
-        "Equity & #{balance(today)} &  & "
+        "#{name_c} & #{balance(today)} &  & "
       end
     end
     def account_summaries
@@ -475,9 +498,18 @@ EOF
 
       #EOF
     end
+    def currency_list(accounts=@accounts, &block)
+      p accounts.map{|acc| acc.name rescue nil}
+      if block_given?
+        accounts.find_all{|acc| acc.runs.find{|r| yield(r)}}.map{|acc| acc.currency}.uniq.compact
+      else
+        accounts.find_all{|acc| not acc.runs or acc.runs.find{|r| r.in_date(acc.info)}}.map{|acc| acc.currency}.uniq.compact
+      end
+    end
+
     def expense_pie_charts_by_currency(name, accounts, &block)
-      currencies = accounts.find_all{|acc| acc.runs.find{|r| yield(r)}}.map{|acc| acc.currency}.uniq
-      (
+      currencies = currency_list(accounts, &block)
+      return (
         currencies.map do |curr|
           str = ""
           str << "\\subsubsection{#{curr}}\n" if curr
@@ -493,30 +525,48 @@ EOF
       labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
       #ep ['labels22539', name, labels, exps]
       return "No expenditure in account period." if labels == nil
-      kit = GraphKit.quick_create([exps])
+
+
+      #sum = exps.sum
+      #angles = exps.map{|ex| ex/sum * 360.0}
+      #start_angles = angles.dup #inject(-angles[0]){|o,n| o+n}
+      ##start_angles.map!{|a| a+(start_angles
+      #end_angles = angles.inject(-angles[0]){|o,n| o+n}
+
+
+      kit = GraphKit.quick_create([labels.size.times.to_a, exps])
       kit.data[0].gp.with = 'boxes'
+      kit.gp.boxwidth = "#{0.8} absolute"
       kit.gp.style = "fill solid"
+      kit.gp.yrange = "[#{[kit.data[0].x.data.min,0].min}:]"
+      #kit.gp.xrange = "[-1:#{labels.size+1}]"
+      kit.gp.xrange = "[-1:1]" if labels.size==1
+      kit.gp.grid = "ytics"
+      kit.xlabel = nil
+      kit.ylabel = nil
       #pp ['kit222', kit, labels]
       i = -1
       kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 315"
-      kit.gnuplot_write("#{name}.eps", size: "4.0in,2.0in")
-      #%x[ps2eps #{name}.ps]
+      fork do 
+        kit.gnuplot_write("#{name}.eps", size: "4.0in,1.8in")
+        %x[epspdf #{name}.eps]
+      end
 
       #"\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
       #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}.eps}\\vspace{1em}\\end{center}"
-      "\\myfigure{#{name}.eps}"
+      "\\myfigure{#{name}.pdf}"
     end
-    def get_in_limit_discretionary_account_factor
+    def get_in_limit_discretionary_account_factor(currency)
       @projected_account_factor = 1.0
       loop do
         ok = true
         date = @today
         while date < @today + @days_ahead
-          ok = false if @equity.projected_balance(date) < @equity.red_line(date)
+          ok = false if @equities[currency].projected_balance(date) < @equities[currency].red_line(date)
           date += 1
           #ep ['projected_account_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
         end
-        @in_limit_discretionary_account_factor = @projected_account_factor
+        @in_limit_discretionary_account_factors[currency] = @projected_account_factor
         break if (@projected_account_factor == 0.0 or ok == true)
         @projected_account_factor -= 0.01
         @projected_account_factor -= 0.04
@@ -525,7 +575,7 @@ EOF
       @projected_account_factor = nil
       #exit
     end
-    def get_stable_discretionary_account_factor
+    def get_stable_discretionary_account_factor(currency)
       @projected_account_factor = 1.0
       loop do
         ok = true
@@ -534,11 +584,11 @@ EOF
         while date < @today + @days_ahead
           #ok = false if @equity.projected_balance(date) < @equity.red_line(date)
           date += 1
-          balances.push @equity.projected_balance(date)
+          balances.push @equities[currency].projected_balance(date)
           #ep ['projected_account_factor', date, @equity.projected_balance(date),  @equity.red_line(date), ok]
         end
-        ok = false if balances.mean < @equity.balance(@today)
-        @stable_discretionary_account_factor = @projected_account_factor
+        ok = false if balances.mean < @equities[currency].balance(@today)
+        @stable_discretionary_account_factors[currency] = @projected_account_factor
         break if (@projected_account_factor == 0.0 or ok == true)
         @projected_account_factor -= 0.01
         @projected_account_factor -= 0.1
@@ -546,18 +596,18 @@ EOF
       @projected_account_factor = nil
       #exit
     end
-    def discretionary_account_table
-      discretionary_accounts = accounts_with_averages(@projected_accounts_info)
+    def discretionary_account_table(currency)
+      discretionary_accounts = accounts_with_averages(@projected_accounts_info.find_all{|acc,inf| acc.currency == currency}.to_h)
 
       <<EOF
-\\section{Discretionary Budget Summary}
+\\section{Discretionary Budget Summary (#{currency})}
 \\begin{tabulary}{0.9\\textwidth}{ R | c  c  c c  }
 Budget & Average & Projection & Limit & Stable \\\\
       #{discretionary_accounts.map{|account, info|
       #ep info
       "#{account.name_c} & #{info[:average]} & #{info[:projection]} & #{
-        (info[:projection] * @in_limit_discretionary_account_factor).round(2)} & 
-      #{(info[:projection] * @stable_discretionary_account_factor).round(2)}  \\\\"
+        (info[:projection] * @in_limit_discretionary_account_factors[currency]).round(2)} & 
+      #{(info[:projection] * @stable_discretionary_account_factors[currency]).round(2)}  \\\\"
       }.join("\n\n")
       }
 \\end{tabulary}
@@ -566,7 +616,11 @@ EOF
     def account_expenditure_graphs
       <<EOF
 \\section{Expenditure by Account Period}
-      #{account_and_transfer_graphs(@expense_accounts.find_all{|acc| acc.info and acc.info[:period]})}
+      #{currency_list.map{|curr| 
+        account_and_transfer_graphs(@expense_accounts.find_all{|acc| 
+          acc.info and acc.info[:period] and acc.currency == curr
+        })
+      }.join("\n")}
 EOF
     end
     def account_and_transfer_graphs(accounts, options={})
@@ -584,6 +638,15 @@ EOF
           kit.gp.style = "fill solid"
           kit.xlabel = nil
           kit.ylabel = "Expenditure"
+          kit.data[0].gp.with = 'boxes'
+          dat = kit.data[0].x.data
+          kit.gp.boxwidth = "#{(dat.max.to_f  - dat.min.to_f)/dat.size * 0.8} absolute"
+          kit.gp.yrange = "[#{[kit.data[0].y.data.min,0].min}:]"
+          #kit.gp.xrange = "[-1:#{labels.size+1}]"
+          #kit.gp.xrange = "[-1:1]" if labels.size==1
+          kit.gp.grid = "ytics"
+          kit.xlabel = nil
+          kit.ylabel = nil
           unless options[:transfers]
             kits = accounts_with_averages({account => account_info}).map{|account, account_info| 
               #ep 'Budget is ', account
@@ -605,11 +668,14 @@ EOF
           CodeRunner::Budget.kit_time_format_x(kit)
           #kit.gnuplot
           #ep ['kit1122', account, kit]
-          kit.gnuplot_write("#{account.name_c_file}.eps", size: "4.0in,2.0in")
+          fork do 
+            kit.gnuplot_write("#{account.name_c_file}.eps", size: "4.0in,2.0in")
+            exec "epspdf #{account.name_c_file}.eps"
+          end
           #%x[ps2eps #{account}.ps]
           #"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
           #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{account}.eps}\\vspace{1em}\\end{center}"
-          "\\myfigure{#{account.name_c_file}.eps}"
+          "\\myfigure{#{account.name_c_file}.pdf}"
         end
       }.join("\n\n")
       }"
@@ -690,7 +756,7 @@ EOF
         account_items.zip(dates, expenditures).map{|items, date, expenditure|
         if items.size > 0
           "
-      \\tiny
+      \\small
       \\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " L " + " r " * 2 + " c " }}
       %\\hline
           #{date.to_s.latex_escape} & & & Total & #{expenditure} &  \\\\
@@ -720,24 +786,30 @@ EOF
       <<EOF
 \\section{Recent Transactions}
       #{@accounts.find_all{|acc| not acc.type == :Equity}.sort_by{|acc| acc.external ? 0 : 1}.map{|acc| 
-      "\\subsection{#{acc.name}}
+      "\\subsection{#{acc.name_c}}
 \\tiny
-      #{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}.sort_by{|r| [r.sub_account, r.date, r.id]}.reverse
+      #{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}
+      case acc.type
+      when :Expense, :Income
+        all = all.sort_by{|r| [r.sub_account, r.date, r.id]}.reverse
+      else
+        all = all.sort_by{|r| [r.date, r.id]}.reverse
+      end
       #ep ['acc', acc, 'ids', all.map{|r| r.id}, 'size', all.size]
 all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
-        "\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " l " + " r " * 3 + "l"}}
-        #{piece.map{|r| 
-        (CodeRunner::Budget.rcp.component_results - [:sc] + [:sub_account]).map{|res| 
-          entry = r.send(res).to_s.latex_escape
-          #if 
-          entry = entry[0...25] if entry.length > 25
-          #if entry.length > 40
-            #entry = entry.split(/.{40}/).join(" \\newline ")
-          #end
-          entry
-                                                                                #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
-        }.join(" & ")
-        }.join("\\\\\n")}
+  "\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " l " + " r " * 3 + "l"}}
+  #{piece.map{|r| 
+  (CodeRunner::Budget.rcp.component_results - [:sc] + [:sub_account]).map{|res| 
+    entry = r.send(res).to_s.latex_escape
+    #if 
+    entry = entry[0...25] if entry.length > 25
+    #if entry.length > 40
+    #entry = entry.split(/.{40}/).join(" \\newline ")
+    #end
+    entry
+    #rcp.component_results.map{|res| r.send(res).to_s.gsub(/(.{20})/, '\1\\\\\\\\').latex_escape
+  }.join(" & ")
+  }.join("\\\\\n")}
 \\end{tabulary}"}.join("\n\n")}"
       }.join("\n\n")}
 EOF
@@ -746,12 +818,14 @@ EOF
     def header
       <<EOF
 \\documentclass[a5paper]{article}
-\\usepackage[scale=0.9]{geometry}
+%\\usepackage[scale=0.9]{geometry}
+\\usepackage[left=1cm,top=1cm,right=1cm,nohead,nofoot]{geometry}
 %\\usepackage[cm]{fullpage}
 \\usepackage{tabulary}
 \\usepackage{graphicx}
 \\usepackage{multicol}
 \\usepackage{hyperref}
+\\usepackage{libertine}
 \\usepackage{xcolor,listings}
 \\newcommand\\Tstrut{\\rule{0pt}{2.8ex}}
 \\newcommand\\myfigure[1]{\\vspace*{0em}\\begin{center}
@@ -766,8 +840,19 @@ basicstyle=\\ttfamily\\color{black},
 identifierstyle = \\ttfamily\\color{purple},
 keywordstyle=\\ttfamily\\color{blue},
 stringstyle=\\color{orange}}
+\\usepackage[compact]{titlesec}
+\\titlespacing{\\section}{0pt}{*0}{*0}
+\\titlespacing{\\subsection}{0pt}{*0}{*2}
+\\titlespacing{\\subsubsection}{0pt}{*0}{*0}
+\\setlength{\\parskip}{0pt}
+\\setlength{\\parsep}{0pt}
+\\setlength{\\headsep}{0pt}
+\\setlength{\\topskip}{0pt}
+\\setlength{\\topmargin}{0pt}
+\\setlength{\\topsep}{0pt}
+\\setlength{\\partopsep}{0pt}
 \\begin{document}
-\\title{#{@days_before}-day Budget Report}
+\\title{Budget Report from #{@start_date.strftime("%A #{@start_date.day.ordinalize} of %B %Y")} to #{@end_date.strftime("%A #{@end_date.day.ordinalize} of %B %Y")}}
 \\maketitle
 \\tableofcontents
 EOF
