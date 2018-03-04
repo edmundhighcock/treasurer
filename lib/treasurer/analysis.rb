@@ -187,10 +187,10 @@ module Analysis
         value + nunits * (info[:size]||account.projection*(@projected_account_factor||1.0))
 
 			end
-			sum_out + value
+			sum + value
 			#(rcp.excluding? and rcp.excluding.include?(name)) ? sum : sum + value
 		end
-		sum
+		sum_out
 	end
 end
 	include Analysis

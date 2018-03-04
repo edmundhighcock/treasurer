@@ -3,7 +3,7 @@ source "http://rubygems.org"
 # Example:
 gem "activesupport", ">= 5.0.0"
     gem "coderunner", ">= 0.14.16"
-    gem "budgetcrmod", ">= 0.2.0"
+    gem "budgetcrmod", ">= 0.2.1"
     gem "command-line-flunky", ">= 1.0.0"
 
 # Add dependencies to develop your gem here.

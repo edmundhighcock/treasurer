@@ -1,4 +1,4 @@
-class Treasurer
+class Treasurer::Reporter
   class Account
   end
   class SubAccount < Account
@@ -24,18 +24,18 @@ class Treasurer
       #@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
       @external = external
       @runs = runs.find_all do |r| 
-        p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency and @external
+        #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency and @external
         #@external ? r.external_account : r.account) == name}
         if not @external
           r.account == name
         elsif info and cur = info[:currencies] and cur.size > 1
-          p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency
+          #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency
           r.external_account == name and acinfo = ACCOUNT_INFO[r.account] and acinfo[:currencies] == [@currency]
         else 
           r.external_account == name
         end
       end
-      p ['Accountinf', name, @currency, @runs.size, runs.size]
+      #p ['Accountinf', name, @currency, @runs.size, runs.size]
       info[:external] = external if info
     end
     def sub_accounts
@@ -196,10 +196,10 @@ EOF
       kit2 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, projection])
       red = futuredates.map{|date| red_line(date)}
       kit3 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, red])
-      @reporter.projected_account_factor = @reporter.in_limit_discretionary_account_factor
+      @reporter.projected_account_factor = @reporter.in_limit_discretionary_account_factors[currency]
       limit = futuredates.map{|date| projected_balance(date)}
       kit4 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, limit])
-      @reporter.projected_account_factor = @reporter.stable_discretionary_account_factor
+      @reporter.projected_account_factor = @reporter.stable_discretionary_account_factors[currency]
       #ep ['projected_account_factor!!!!', @reporter.projected_account_factor]
       stable = futuredates.map{|date| projected_balance(date)}
       kit5 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, stable])
@@ -214,7 +214,7 @@ EOF
       kit.ylabel = "Balance"
 
 
-      #kit.data[0].gp.title = 'Limit'
+      kit.data[0].gp.title = 'Limit'
       kit.data[1].gp.title = 'Previous'
       kit.data[2].gp.title = '0 GBP Discretionary'
       kit.data[2].gp.title = 'Projection'
