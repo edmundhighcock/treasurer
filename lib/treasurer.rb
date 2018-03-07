@@ -59,6 +59,7 @@ EOF
 		['--today', '-t', GetoptLong::REQUIRED_ARGUMENT, "Specify today's date, i.e. change the date on which the report is generated."],		
 		['--coderunner', '-C', GetoptLong::REQUIRED_ARGUMENT, "Options to pass to CodeRunner, the engine which manages the transaction data."],		
 		['--month', '-m', GetoptLong::REQUIRED_ARGUMENT, "Overrides -a, -b and -t and produces a report for a given month"],		
+    ['--report-currency', '-r', GetoptLong::REQUIRED_ARGUMENT, "Convert all amounts to the given currency (e.g. GBP) and amalgamate different currency data to form a unified overview."],		
 		#['--formats', '-f', GetoptLong::REQUIRED_ARGUMENT, "A list of formats pertaining to the various input and output files (in the order which they appear), separated by commas. If they are all the same, only one value may be given. If a value is left empty (i.e. there are two commas in a row) then the previous value will be used. Currently supported formats are #{SUPPORTED_FORMATS.inspect}. "],		
 
 		]
@@ -94,8 +95,8 @@ class Treasurer
 		# options (copts) hash
 		def setup(copts)
 			# None neededed
-			copts[:b] = copts[:b].to_i
-			copts[:a] = copts[:a].to_i
+			copts[:b] = copts[:b].to_i if copts[:b]
+			copts[:a] = copts[:a].to_i if copts[:a]
 			copts[:t] = Date.parse(copts[:t]) if copts[:t]
 	  end
 		def verbosity

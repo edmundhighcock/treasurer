@@ -15,7 +15,7 @@ class Treasurer::Reporter
   end
   class Account
     attr_reader :name, :external, :runs, :currency
-    attr_accessor :projection, :average
+    attr_accessor :projection, :average, :original_currency
     def initialize(name, reporter, runner, runs, external, options={})
       @name = name
       @reporter = reporter
@@ -28,7 +28,7 @@ class Treasurer::Reporter
         #@external ? r.external_account : r.account) == name}
         if not @external
           r.account == name
-        elsif info and cur = info[:currencies] and cur.size > 1
+        elsif @currency and info and cur = info[:currencies] and cur.size > 1
           #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency
           r.external_account == name and acinfo = ACCOUNT_INFO[r.account] and acinfo[:currencies] == [@currency]
         else 
@@ -51,7 +51,12 @@ class Treasurer::Reporter
     end
     def red_line(date)
       if Treasurer::LocalCustomisations.instance_methods.include? :red_line
-        super(name, date)
+        val = super(name, date)
+        if rc = @report_currency
+          er = EXCHANGE_RATES[[@original_currency,rc]]
+          val *= er
+        end
+        val
       else 
         0.0
       end
@@ -75,9 +80,14 @@ class Treasurer::Reporter
       if @external or not has_balance?
         #p ['name is ', name, type]
         #
-        balance = (@runs.find_all{|r| r.date <= date and r.date >= opening_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0)
-        balance += info[:opening_balance] if info[:opening_balance]
-        balance
+        if type == :Expense
+          balance = (@runs.find_all{|r| r.date <= date and r.date >= @reporter.start_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0)
+
+        else
+          balance = (@runs.find_all{|r| r.date <= date and r.date >= opening_date }.map{|r| money_in_sign * (r.deposit - r.withdrawal) * (@external ? -1 : 1)}.sum || 0.0)
+          balance += info[:opening_balance] if info[:opening_balance]
+          balance
+        end
         #Temporary....
         #0.0
       else
@@ -87,20 +97,20 @@ class Treasurer::Reporter
       end
     end
     def deposited(today, days_before, &block)
-      #p ['name22 is ', name, type, @runs.size]
+      p ['name223344 is ', name_c, today, days_before]
       #@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
-      @runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external) ? r.withdrawal : r.deposit }.sum || 0
+      @runs.find_all{|r| r.days_ago(today) < days_before and r.date <= today and (!block or yield(r)) }.map{|r| (@external) ? r.withdrawal : r.deposit }.sum || 0
     end
     def withdrawn(today, days_before)
       #@runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.deposit : r.withdrawal }.sum || 0
-      @runs.find_all{|r| r.days_ago(today) < days_before }.map{|r| (@external) ? r.deposit : r.withdrawal }.sum || 0
+      @runs.find_all{|r| r.days_ago(today) < days_before and r.date <= today }.map{|r| (@external) ? r.deposit : r.withdrawal }.sum || 0
     end
     def currency
       @currency || (info[:currencies] && info[:currencies][0])
     end
     def currency_label
-      if @currency
-        " (#@currency)"
+      if currency
+        " (#{currency}#{@original_currency ? "<-#@original_currency" : ""})"
       else
         ''
       end
@@ -110,7 +120,7 @@ class Treasurer::Reporter
       name + currency_label
     end
     def name_c_file
-      name_c.to_s.gsub(/[: ()]/, '_')
+      name_c.to_s.gsub(/[: ()<-]/, '_')
     end
 
     def summary_table(today, days_before)
@@ -154,30 +164,49 @@ EOF
       #(discretionary ? @reporter.sum_regular({name => info}, date) : 0.0)
     end
     def linked_projected_account_info
-      Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_account] == name and ext_ac.currency == currency}]
+      #Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_accounts] == name and ext_ac.currency == currency}]
+      Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_accounts][original_currency] and inf[:linked_accounts][original_currency] == name and ext_ac.original_currency == original_currency}]
     end
     def cache
       @cache ||={}
     end
     def non_discretionary_projected_balance(date)
       #ep ['FUTURE_INCOME', FUTURE_INCOME, name] if FUTURE_INCOME.size > 0
+      if not (@futures and @regulars)
+        @futures = Marshal.load(Marshal.dump(FUTURE_TRANSFERS))
+        @regulars = Marshal.load(Marshal.dump(REGULAR_TRANSFERS))
+        [@regulars, @futures].each do |transfers|
+          @accounts_hash = @reporter.accounts_hash
+          transfers.each do |accs, trans|
+            next unless accs.include? name
+            trans.each do |item, details|
+              if  details[:currency] != currency
+                #p ['LAGT(O', details[:currency], currency, details, name_c, item]
+                details[:size] *= EXCHANGE_RATES[[details[:currency], currency]]
+              end
+            end
+          end
+        end
+      end
+           
+          
       cache[[:non_discretionary_projected_balance, date]] ||= 
         balance +
         #@reporter.sum_regular(REGULAR_EXPENDITURE[name], date) + 
         #@reporter.sum_regular(REGULAR_INCOME[name], date) -  
         #@reporter.sum_future(FUTURE_EXPENDITURE[name], date) + 
         #@reporter.sum_future(FUTURE_INCOME[name], date) + 
-        (FUTURE_TRANSFERS.keys.find_all{|from,to| to == name}.map{|key|
-          @reporter.sum_future(FUTURE_TRANSFERS[key], date) * money_in_sign
+        (@futures.keys.find_all{|from,to| to == name}.map{|key|
+          @reporter.sum_future(@futures[key], date) * money_in_sign
         }.sum||0) - 
-        (FUTURE_TRANSFERS.keys.find_all{|from,to| from == name}.map{|key|
-          @reporter.sum_future( FUTURE_TRANSFERS[key], date) * money_in_sign
+        (@futures.keys.find_all{|from,to| from == name}.map{|key|
+          @reporter.sum_future( @futures[key], date) * money_in_sign
         }.sum||0) +
-        (REGULAR_TRANSFERS.keys.find_all{|from,to| to == name}.map{|key|
-          @reporter.sum_regular(REGULAR_TRANSFERS[key], date) * money_in_sign
+        (@regulars.keys.find_all{|from,to| to == name}.map{|key|
+          @reporter.sum_regular(@regulars[key], date) * money_in_sign
         }.sum||0) - 
-        (REGULAR_TRANSFERS.keys.find_all{|from,to| from == name}.map{|key|
-          @reporter.sum_regular( REGULAR_TRANSFERS[key], date) * money_in_sign
+        (@regulars.keys.find_all{|from,to| from == name}.map{|key|
+          @reporter.sum_regular( @regulars[key], date) * money_in_sign
         }.sum||0)  
     end
     # Write an eps graph to disk of past and projected
@@ -203,9 +232,12 @@ EOF
       #ep ['projected_account_factor!!!!', @reporter.projected_account_factor]
       stable = futuredates.map{|date| projected_balance(date)}
       kit5 = GraphKit.quick_create([futuredates.map{|d| d.to_time.to_i}, stable])
+
+      [kit2,kit4,kit5].each{|k| k.data[0].y.data[0] = balance(today)}
       #exit
       @reporter.projected_account_factor = nil
-      kit += (kit2 + kit4 + kit5)
+      kit += ( kit4 + kit5 + kit2)
+      kit.yrange = [kit.data.map{|dk| dk.y.data.min}.min, kit.data.map{|dk| dk.y.data.max}.max]
       #kit += (kit2)
       kit = kit3 + kit
       kit.title = "Balance for #{name_c}"
@@ -216,11 +248,12 @@ EOF
 
       kit.data[0].gp.title = 'Limit'
       kit.data[1].gp.title = 'Previous'
-      kit.data[2].gp.title = '0 GBP Discretionary'
-      kit.data[2].gp.title = 'Projection'
-      kit.data[3].gp.title = 'Limit'
-      kit.data[4].gp.title = 'Stable'
+      #kit.data[2].gp.title = '0 GBP Discretionary'
+      kit.data[2].gp.title = 'Avoid Limit'
+      kit.data[3].gp.title = 'Stable'
+      kit.data[4].gp.title = 'Projection'
       kit.data.each{|dk| dk.gp.with = "l lw 5"}
+      kit.data[4].gp.with = "l lw 5 dt 2 lc rgb 'black' "
       kit.gp.key = ' bottom left '
       kit.gp.key = ' rmargin '
 
@@ -276,7 +309,7 @@ EOF
         else
           0.0
         end
-      }.sum
+      }.sum + sum_of_assets
     end
     def projected_balance(date=@reporter.today)
       @accounts.map{|acc|
@@ -288,7 +321,10 @@ EOF
         else
           0.0
         end
-      }.sum
+      }.sum + sum_of_assets
+    end
+    def sum_of_assets
+      ASSETS.find_all{|name,details| details[:currency] == currency}.map{|name,details| details[:size]}.sum or 0.0
     end
     def summary_table(today, days_before)
 

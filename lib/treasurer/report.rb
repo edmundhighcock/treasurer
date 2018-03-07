@@ -1,5 +1,11 @@
 require 'active_support/core_ext/integer/inflections'
 
+class Array
+  def median
+    self.sort[size/2 + size%2]
+  end
+end
+
 class Float
   def to_s
     sprintf("%.2f", self)
@@ -59,7 +65,7 @@ end
 class Treasurer
   class Reporter
     #include LocalCustomisations
-    attr_reader :today
+    attr_reader :today, :start_date, :end_date
     attr_reader :in_limit_discretionary_account_factors
     attr_reader :stable_discretionary_account_factors
     attr_accessor :projected_account_factor
@@ -67,6 +73,8 @@ class Treasurer
     attr_reader :equity
     attr_reader :projected_accounts_info
     attr_reader :days_before 
+    attr_reader :report_currency
+    attr_reader :accounts_hash
     def initialize(runner, options)
       @runner = runner
       @days_ahead = options[:days_ahead]||180
@@ -76,6 +84,7 @@ class Treasurer
       @end_date = @today + @days_ahead
       @runs = runner.component_run_list.values
       @currencies = ACCOUNT_INFO.map{|k,v| v[:currencies]}.flatten.uniq
+      @report_currency = options[:report_currency]
 
       if run = @runs.find{|r| not r.external_account}
         raise "External_account not specified for #{run.data_line}" 
@@ -89,22 +98,62 @@ class Treasurer
     def generate_accounts
       accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, false)} 
       external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name}).map{|acc| Account.new(acc, self, @runner, @runs, true)} 
-      external_accounts = external_accounts.map do |acc|
-        if acc_inf = ACCOUNT_INFO[acc.name] and currencies = acc_inf[:currencies] and currencies.size > 1
-          raise "Only expense accounts can have multiple currencies: #{acc.name} has type #{acc.type}" unless acc.type == :Expense
-          new_accounts = currencies.map do |curr|
-            Account.new(acc.name, self, @runner, @runs, true, currency: curr)
+      #if not @report_currency
+        external_accounts = external_accounts.map do |acc|
+          if acc_inf = ACCOUNT_INFO[acc.name] and currencies = acc_inf[:currencies] and currencies.size > 1
+            raise "Only expense accounts can have multiple currencies: #{acc.name} has type #{acc.type}" unless acc.type == :Expense
+            new_accounts = currencies.map do |curr|
+              Account.new(acc.name, self, @runner, @runs, true, currency: curr)
+            end
+            new_accounts.delete_if{|a| a.runs.size == 0}
+            new_accounts
+          else
+            acc
           end
-          new_accounts.delete_if{|a| a.runs.size == 0}
-          new_accounts
-        else
-          acc
         end
-      end
+      #end
       external_accounts = external_accounts.flatten
       @accounts = accounts + external_accounts
       @expense_accounts = @accounts.find_all{|acc| acc.type == :Expense}
-      @accounts_hash = accounts.map{|acc| [acc.name, acc]}.to_h
+      @accounts_hash = @accounts.map{|acc| [acc.name, acc]}.to_h
+
+      if @report_currency
+        @runs.each do |r|
+          if (curr = @accounts_hash[r.account].currency) != @report_currency
+            er = EXCHANGE_RATES[[curr, @report_currency]]
+            r.deposit *= er
+            r.withdrawal *= er
+            r.balance *= er if r.has_balance?
+          end
+        end
+        ASSETS.each do |name, details|
+          details[:size] *= EXCHANGE_RATES[[details[:currency], @report_currency]] if details[:currency]!=@report_currency
+          details[:currency] = @report_currency
+        end
+        [REGULAR_TRANSFERS, FUTURE_TRANSFERS].each do |transfers|
+          transfers.each do |accs, trans|
+            #acc = accs.find{|a| p a, @accounts_hash.keys, @accounts.map{|ac| ac.name}; not @accounts_hash[a].external}
+            trans.each do |item, details|
+              if details[:currency] != @report_currency
+                #p item, acc, curr, @report_currency
+                details[:size] *= EXCHANGE_RATES[[details[:currency], @report_currency]]
+                details[:currency] = @report_currency
+              end
+            end
+          end
+        end
+        @accounts.each do |acc|
+          if acc.info[:opening_balance]
+            if acc.currency != @report_currency
+              acc.info[:opening_balance] *= EXCHANGE_RATES[[acc.currency, @report_currency]]
+            end
+          end
+          acc.instance_variable_set(:@original_currency, acc.currency)
+          acc.instance_variable_set(:@currency, @report_currency)
+          acc.info[:currencies] = [@report_currency]
+        end
+
+      end
       get_projected_accounts
       #p ['projected_accounts_info', @projected_accounts_info]
       #exit
@@ -115,6 +164,7 @@ class Treasurer
       end
       @equities = @equities.to_h
     end
+     
     def report
       generate_accounts
       #get_actual_accounts
@@ -149,12 +199,18 @@ class Treasurer
       <<EOF
 \\section{Summary of Accounts}
       #{[:Equity, :Asset, :Liability, :Income, :Expense].map{|type|
+      accs = @accounts.find_all{|acc| acc.type == type }
       "\\subsection{#{type}}
     \\begin{tabulary}{0.9\\textwidth}{ R | c | c | c}
     Account & Balance & Deposited & Withdrawn \\\\
     \\hline
     \\Tstrut
-      #{@accounts.find_all{|acc| acc.type == type }.map{|acc| acc.summary_line(@today, @days_before)}.join("\\\\\n")}
+      #{(accs.map{|acc| acc.summary_line(@today, @days_before)} + 
+      (type == :Asset ? ASSETS.map{|n,details| "#{n} (#{details[:currency]}) & #{details[:size]} & & "} : [])).join("\\\\\n")}
+      #{type!=:Equity&&false ? "
+      \\\\ \\hline
+      \\Tstrut
+      Totals & #{accs.map{|a| a.balance}.sum} & #{accs.map{|a| a.deposited(@today, @days_before)}.sum} & #{accs.map{|a| a.withdrawn(@today, @days_before)}.sum} \\\\ " : "\\\\"}
     \\end{tabulary}"
       }.join("\n\n")}
 EOF
@@ -175,21 +231,13 @@ EOF
     def expense_account_summary
       <<EOF
 \\section{Expense Account Summary}
-\\subsection{Budget Period}
+\\subsection{Totals for #@days_before-day Budget Period}
       #{expense_pie_charts_by_currency('accountperiod', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
-\\subsection{Last Week}
-      #{expense_pie_charts_by_currency('lastweekexpenses', @expense_accounts){|r| 
-      #p ['r.daysago', r.days_ago(@today)]; 
-      r.days_ago(@today) < 7}}
-\\subsection{Last Month}
-      #{expense_pie_charts_by_currency('lastmonthexpenses', @expense_accounts){|r| r.days_ago(@today) < 30}}
-\\subsection{Last Year}
-      #{expense_pie_charts_by_currency('lastyearexpenses', @expense_accounts){|r| r.days_ago(@today) < 365}}
-\\section{Expense Account Breakdown}
+\\subsection{Expense Account Breakdown}
       #{@expense_accounts.map{|account|
       #ep ['sub_accounts2124', account.sub_accounts.map{|sa| sa.name}]
       "\\subsection{#{account.name_c}} 
-      #{expense_pie_chart(account.name_c_file + 'breakdown', account.sub_accounts){|r|r.days_ago(@today) < @days_before }}"
+      #{expense_pie_chart(account.name_c_file + 'breakdown', account.sub_accounts, account){|r|r.days_ago(@today) < @days_before }}"
       }.join("\n\n")}
 EOF
 
@@ -215,13 +263,33 @@ EOF
         end
       ).join("\n\n")
     end
-    def expense_pie_chart(name, accounts, &block)
+    def expense_pie_chart(name, accounts, subacc=nil, &block)
       #expaccs = accounts.find_all{|acc| acc.type == :Expense}
       labels = accounts.map{|acc| acc.name}
-      exps = accounts.map{|acc| acc.deposited(@today, 50000, &block)}
-      labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
       #ep ['labels22539', name, labels, exps]
-      return "No expenditure in account period." if labels == nil
+
+      kit = if subacc
+        start_dates, end_dates, _exps, _items = account_expenditure(subacc)
+        end_dates = end_dates.reverse #Now from earliest to latest
+        start_dates = start_dates.reverse
+        pp ['DATES', start_dates, end_dates, subacc.name]
+        return "No expenditure in account period." if end_dates.size==0
+        k = (
+          end_dates.size.times.map do |i|
+            exps = accounts.map{|acc| acc.deposited(end_dates[i], end_dates[i] - start_dates[i], &block)}
+            kt = GraphKit.quick_create([labels.size.times.to_a.map{|l| l.to_f + i.to_f/end_dates.size.to_f}, exps])
+            kt.data[0].gp.title = "Ending #{end_dates[i].strftime("#{end_dates[i].mday.ordinalize} %B")}; total = #{exps.sum}"
+            kt.gp.key = "tmargin"
+            kt
+          end
+        ).sum
+        k
+      else
+        exps = accounts.map{|acc| acc.deposited(@today, 50000, &block)}
+        labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
+        return "No expenditure in account period." if not labels #<F8> labels.size==0
+        GraphKit.quick_create([labels.size.times.to_a, exps])
+      end
 
 
       #sum = exps.sum
@@ -231,21 +299,20 @@ EOF
       #end_angles = angles.inject(-angles[0]){|o,n| o+n}
 
 
-      kit = GraphKit.quick_create([labels.size.times.to_a, exps])
-      kit.data[0].gp.with = 'boxes'
-      kit.gp.boxwidth = "#{0.8} absolute"
+      kit.data.each{|dk| dk.gp.with = 'boxes'}
+      kit.gp.boxwidth = "#{0.8/kit.data.size} absolute"
       kit.gp.style = "fill solid"
-      kit.gp.yrange = "[#{[kit.data[0].x.data.min,0].min}:]"
+      kit.gp.yrange = "[#{[kit.data[0].y.data.min,0].min}:]"
       #kit.gp.xrange = "[-1:#{labels.size+1}]"
       kit.gp.xrange = "[-1:1]" if labels.size==1
       kit.gp.grid = "ytics"
       kit.xlabel = nil
       kit.ylabel = nil
-      #pp ['kit222', kit, labels]
       i = -1
       kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 315"
+      pp ['kit222', kit, labels]
       fork do 
-        kit.gnuplot_write("#{name}.eps", size: "4.0in,1.8in")
+        kit.gnuplot_write("#{name}.eps", size: "4.0in,2.0in")
         %x[epspdf #{name}.eps]
       end
 
@@ -285,10 +352,11 @@ EOF
           #ep ['projected_account_factor', date, balances.mean, @projected_account_factor,  @equities[currency].balance(@today), ok]
         end
         ok = false if balances.mean < @equities[currency].balance(@today) - 0.001
+        #ok = false if balances.median < @equities[currency].balance(@today) - 0.001
         @stable_discretionary_account_factors[currency] = @projected_account_factor
         break if (@projected_account_factor <= 0.0 or ok == true)
         @projected_account_factor -= 0.01
-        @projected_account_factor -= 0.1
+        #@projected_account_factor -= 0.1
       end
       @projected_account_factor = nil
       #exit
@@ -324,20 +392,23 @@ EOF
       "#{accounts.map{|account| 
         account_info = account.info
         #ep ['accountbadf', account, account_info]
-        dates, expenditures, _items = account_expenditure(account)
+        start_dates, dates, expenditures, _items = account_expenditure(account)
         ep ['accountbadf', account.name_c, account_info, expenditures]
         if dates.size == 0
           ""
         else
           #ep ['account', account, dates, expenditures]
-          kit = GraphKit.quick_create([dates.map{|d| d.to_time.to_i}, expenditures])
+          plotdates = dates.zip(start_dates).map{|d, s| (d.to_time.to_i + s.to_time.to_i)/2.0}
+          kit = GraphKit.quick_create([plotdates, expenditures])
           kit.data.each{|dk| dk.gp.with="boxes"}
           kit.gp.style = "fill solid"
           kit.xlabel = nil
           kit.ylabel = "Expenditure"
           kit.data[0].gp.with = 'boxes'
           dat = kit.data[0].x.data
-          kit.gp.boxwidth = "#{(dat.max.to_f  - dat.min.to_f)/dat.size * 0.8} absolute"
+          barsize = (dat.max.to_f  - dat.min.to_f)/dat.size * 0.8
+          kit.gp.boxwidth = "#{barsize} absolute"
+          dat.map!{|d| d - barsize*1.1}
           kit.gp.yrange = "[#{[kit.data[0].y.data.min,0].min}:]"
           #kit.gp.xrange = "[-1:#{labels.size+1}]"
           #kit.gp.xrange = "[-1:1]" if labels.size==1
@@ -348,7 +419,7 @@ EOF
             kits = accounts_with_averages({account => account_info}).map{|account, account_info| 
               #ep 'Budget is ', account
               kit2 = GraphKit.quick_create([
-                [dates[0], dates[-1]].map{|d| d.to_time.to_i}, 
+                [dates[0], dates[-1]].map{|d| d.to_time.to_i - barsize}, 
                 [account.average, account.average]
               ])
               kit2.data[0].gp.with = 'l lw 5'
@@ -447,7 +518,7 @@ EOF
       <<EOF
 \\section{SubAccount Breakdown}
       #{(@actual_accounts).map{|account, account_info| 
-      dates, expenditures, account_items = account_expenditure(account, account_info)
+      _start_dates, dates, expenditures, account_items = account_expenditure(account, account_info)
       #pp account, account_items.map{|items| items.map{|i| i.date.to_s}}
       "\\subsection{#{account}}" + 
         account_items.zip(dates, expenditures).map{|items, date, expenditure|
@@ -549,7 +620,9 @@ stringstyle=\\color{orange}}
 \\setlength{\\topsep}{0pt}
 \\setlength{\\partopsep}{0pt}
 \\begin{document}
-\\title{Budget Report from #{@start_date.strftime("%A #{@start_date.day.ordinalize} of %B %Y")} to #{@end_date.strftime("%A #{@end_date.day.ordinalize} of %B %Y")}}
+\\title{Budget Report from #{@start_date.strftime("%A #{@start_date.day.ordinalize} of %B %Y")} to #{@today.strftime("%A #{@today.day.ordinalize} of %B %Y")}}
+\\author{With projections to #{@end_date.strftime("%A #{@end_date.day.ordinalize} of %B %Y")}}
+\\date{\\today}
 \\maketitle
 \\tableofcontents
 EOF
@@ -562,3 +635,11 @@ EOF
 
   end
 end
+#\\subsection{Last Week}
+      ##{expense_pie_charts_by_currency('lastweekexpenses', @expense_accounts){|r| 
+      ##p ['r.daysago', r.days_ago(@today)]; 
+      #r.days_ago(@today) < 7}}
+#\\subsection{Last Month}
+      ##{expense_pie_charts_by_currency('lastmonthexpenses', @expense_accounts){|r| r.days_ago(@today) < 30}}
+#\\subsection{Last Year}
+      ##{expense_pie_charts_by_currency('lastyearexpenses', @expense_accounts){|r| r.days_ago(@today) < 365}}
