@@ -11,7 +11,7 @@ Gem::Specification.new do |s|
   s.required_rubygems_version = Gem::Requirement.new(">= 0".freeze) if s.respond_to? :required_rubygems_version=
   s.require_paths = ["lib".freeze]
   s.authors = ["Edmund Highcock".freeze]
-  s.date = "2018-03-04"
+  s.date = "2018-03-07"
   s.description = "A simple command line tool for managing accounts and finances. Easily import internet banking spreadsheets and generate sophisticated reports and projections.".freeze
   s.email = "edmundhighcock@users.sourceforge.net".freeze
   s.executables = ["treasurer".freeze]
