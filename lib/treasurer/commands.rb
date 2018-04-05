@@ -24,7 +24,7 @@ class << self
 	end
 	def fetch_reporter(copts = {})
 		load_treasurer_folder(copts)
-		reporter = Reporter.new(CodeRunner.fetch_runner(h: :component, A: true), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t], report_currency: copts[:r])
+		Reporter.new(CodeRunner.fetch_runner(h: :component, A: true), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t], report_currency: copts[:r])
 	end
   def status(copts={})
     load_treasurer_folder(copts)
@@ -48,6 +48,16 @@ class << self
 		CodeRunner::Budget.send(:include, Treasurer::LocalCustomisations)
 		_runner = CodeRunner.fetch_runner(eval(copts[:C]||"{}"))
 	end
+  def list_last_updated(copts={})
+    reporter = fetch_reporter(copts)
+    reporter.generate_accounts
+    accts = reporter.accounts.find_all{|ac| not ac.external and not ac.type==:Equity}
+    puts "Account | Date "
+    accts.each do |ac|
+      #puts ac.name
+      puts "#{ac.name} | #{ac.runs.sort_by{|r| r.date}[-1].date.to_s}"
+    end
+  end
 
 	def method_missing(meth, *args)
 		CodeRunner.send(meth, *args)
