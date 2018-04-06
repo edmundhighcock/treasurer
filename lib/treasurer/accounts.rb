@@ -13,6 +13,8 @@ class Treasurer::Reporter
       #ep ['sub_accounts333', name, @runs.size, runs.size]
     end
   end
+  class ReportAccount < Account
+  end
   class Account
     attr_reader :name, :external, :runs, :currency
     attr_accessor :projection, :average, :original_currency
@@ -23,20 +25,65 @@ class Treasurer::Reporter
       @currency = options[:currency]
       #@projected_accounts_info =Hash[projected_accounts_info.find_all{|k,v| v[:account] == name}]
       @external = external
-      @runs = runs.find_all do |r| 
-        #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency and @external
-        #@external ? r.external_account : r.account) == name}
-        if not @external
-          r.account == name
-        elsif @currency and info and cur = info[:currencies] and cur.size > 1
-          #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency
-          r.external_account == name and acinfo = ACCOUNT_INFO[r.account] and acinfo[:currencies] == [@currency]
-        else 
-          r.external_account == name
+      unless @runs = options[:input_runs] 
+        @runs = runs.find_all do |r| 
+          #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency and @external
+          #@external ? r.external_account : r.account) == name}
+          if not @external
+            r.account == name
+          elsif @currency and info and cur = info[:currencies] and cur.size > 1
+            #p ['checking11', name, @currency, ACCOUNT_INFO[r.account]] if name == r.external_account and @currency
+            r.external_account == name and acinfo = ACCOUNT_INFO[r.account] and acinfo[:currencies] == [@currency]
+          else 
+            r.external_account == name
+          end
         end
+
+        if should_report?
+          if @external
+            @report_runs = runs.find_all do |r|
+              r.external_account == name
+            end
+          else
+            @report_runs = @runs
+          end
+        end
+      else
+        @report_runs = []
       end
       #p ['Accountinf', name, @currency, @runs.size, runs.size]
       info[:external] = external if info
+    end
+
+    # Make the account object that does the reporting. This only
+    # gets called if we are doing a currency conversion and
+    # this account is in the reeport currency.
+    def generate_report_account
+      p [name_c, @report_runs.class, @runs.class]
+      @report_account = ReportAccount.new(@name, @reporter, @runner, nil, @external, {currency: @currency, input_runs: @report_runs})
+      @report_account.instance_variable_set(:@currency, @reporter.report_currency)
+      @report_account.instance_variable_set(:@original_currency, currency)
+    end
+
+    # The object that actually does the reporting. If there is no
+    # currency conversion this is just self.
+    # A separate report object is needed as just lumping all the 
+    # different currencies together across the board results
+    # in double counting.
+    #
+    # The report account is used for reporting information
+    # regarding a particular account. The main accoun is
+    # used for calculations e.g. Equity
+    def report_account
+      @report_account || self
+    end
+
+    # Should I report? If there is no currency conversion
+    # all accounts report. If there is currency conversion
+    # only non-external accounts and accounts in the 
+    # right currency report.
+    def should_report?
+      !@reporter.report_currency or !@external or (@original_currency||currency) == @reporter.report_currency
     end
     def sub_accounts
       @sub_accounts ||= @runs.map{|r| r.sub_account}.uniq.compact.map{|acc| SubAccount.new(acc, @reporter, @runner, @runs, @external, currency: @currency)}
@@ -137,7 +184,7 @@ EOF
     def summary_line(today, days_before)
 
       <<EOF
-      #{name_c} & #{balance} & #{deposited(today, days_before)} & #{withdrawn(today, days_before)} 
+      #{name_c} & #{balance.to_tex} & #{deposited(today, days_before).to_tex} & #{withdrawn(today, days_before).to_tex} 
 EOF
     end
     def money_in_sign
@@ -237,13 +284,15 @@ EOF
       #exit
       @reporter.projected_account_factor = nil
       kit += ( kit4 + kit5 + kit2)
-      kit.yrange = [kit.data.map{|dk| dk.y.data.min}.min, kit.data.map{|dk| dk.y.data.max}.max]
+      kit.yrange = [(m = kit.data.map{|dk| dk.y.data.min}.min; m-m.abs*0.1), (m=kit.data.map{|dk| dk.y.data.max}.max; m+m.abs*0.1)]
       #kit += (kit2)
       kit = kit3 + kit
       kit.title = "Balance for #{name_c}"
       kit.xlabel = %['Date' offset 0,-2]
       kit.xlabel = nil
       kit.ylabel = "Balance"
+      kit.gp.mytics= "5"
+      kit.gp.grid = "ytics mytics lw 2,lw 1"
 
 
       kit.data[0].gp.title = 'Limit'
@@ -255,14 +304,20 @@ EOF
       kit.data.each{|dk| dk.gp.with = "l lw 5"}
       kit.data[4].gp.with = "l lw 5 dt 2 lc rgb 'black' "
       kit.gp.key = ' bottom left '
-      kit.gp.key = ' rmargin '
+      kit.gp.key = ' rmargin samplen 2'
 
       #(p kit; STDIN.gets) if name == :LloydsCreditCard
       CodeRunner::Budget.kit_time_format_x(kit)
+      size = case type
+             when :Equity
+               "4.0in,4.0in"
+             else
+               "4.0in,2.5in"
+             end
 
       fork do
-        (kit).gnuplot_write("#{name_c_file}_balance.eps", size: "4.0in,1.5in") #, latex: true)
-        %x[epspdf #{name_c_file}_balance.eps]
+        (kit).gnuplot_write("#{name_c_file}_balance.eps", size: size) #, latex: true)
+        %x[epspdf -b #{name_c_file}_balance.eps]
       end
       #%x[epspdf #{name}_balance.eps]
     end
@@ -280,6 +335,9 @@ EOF
       @runner = runner
       @accounts = accounts #.find_all{|acc| not acc.external}
       @currency = options[:currency]
+    end
+    def should_report?
+      true
     end
     def type
       :Equity
@@ -336,7 +394,7 @@ Balance & #{balance} \\\\
 EOF
     end
     def summary_line(today, days_before)
-      "#{name_c} & #{balance(today)} &  & "
+      "#{name_c} & #{balance(today).to_tex} &  & "
     end
   end
 end

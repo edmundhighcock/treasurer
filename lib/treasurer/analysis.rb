@@ -22,7 +22,8 @@ module Analysis
 		#start_date = [(account.info[:start]||@start_date), @start_date].max
 		expenditure = 0
 		items_temp = []
-    items = @runner.component_run_list.values.find_all{|r| r.external_account == account.name and r.in_date(account.info) and @accounts_hash[r.account].original_currency == account.original_currency}
+    #items = @runner.component_run_list.values.find_all{|r| r.external_account == account.name and r.in_date(account.info) and @accounts_hash[r.account].original_currency == account.original_currency}
+    items = account.runs.find_all{|r| r.in_date(account.info)}
     #ep ['items', items.map{|i| i.date}]
     #ep ['account', account.name_c]
 		counter = 0
@@ -142,7 +143,7 @@ module Analysis
 		sum_out = regular_items.inject(0) do |sum, (account, item)|	
 			item = [item] unless item.kind_of? Array
 #			  ep item
-			value = item.inject(0) do |value,info|
+			value_out = item.inject(0) do |value,info|
 				finish = (info[:end] and info[:end] < end_date) ? info[:end] : end_date
 				#today = (Time.now.to_i / (24.0*3600.0)).round
 				 
@@ -212,7 +213,7 @@ module Analysis
         value + nunits * (info[:size]||account.projection*(@projected_account_factor||1.0))
 
 			end
-			sum + value
+			sum + value_out
 			#(rcp.excluding? and rcp.excluding.include?(name)) ? sum : sum + value
 		end
 		sum_out
