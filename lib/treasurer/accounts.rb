@@ -99,8 +99,9 @@ class Treasurer::Reporter
     def red_line(date)
       if Treasurer::LocalCustomisations.instance_methods.include? :red_line
         val = super(name, date)
-        if rc = @report_currency
+        if rc = @reporter.report_currency and rc != @original_currency
           er = EXCHANGE_RATES[[@original_currency,rc]]
+          #p ['AAAAAAA', name, @original_currency, er, val, rc]
           val *= er
         end
         val
@@ -120,10 +121,15 @@ class Treasurer::Reporter
     def has_balance?
       not @runs.find{|r| not r.has_balance?} 
     end
-    def balance(date = @reporter.today) 
+    def balance(date = @reporter.today, options={}) 
+      @balance_cache ||= {}
+      if b = @balance_cache[[date,options]] 
+        return b 
+      end
       date_i = date.to_datetime.to_time.to_i
       #if !date
       #@runs.sort_by{|r| r.date}[-1].balance
+      balance = nil
       if @external or not has_balance?
         #p ['name is ', name, type]
         #
@@ -140,8 +146,13 @@ class Treasurer::Reporter
       else
         #p ['name33 is ', name, type, @runs.size, @currency]
         nearest_time = @runs.map{|r| (r.date_i - date_i).to_f.abs}.sort[0]
-        @runs.find_all{|r| (r.date_i - date_i).to_f.abs == nearest_time}.sort_by{|r| r.id}[-1].balance
+        balance = @runs.find_all{|r| (r.date_i - date_i).to_f.abs == nearest_time}.sort_by{|r| r.id}[-1].balance
       end
+      if options[:original_currency] and @original_currency and @original_currency!=currency
+        balance = balance*EXCHANGE_RATES[[currency, @original_currency]]
+      end
+      @balance_cache[[date,options]]=balance
+      balance
     end
     def deposited(today, days_before, &block)
       p ['name223344 is ', name_c, today, days_before]
@@ -284,7 +295,7 @@ EOF
       #exit
       @reporter.projected_account_factor = nil
       kit += ( kit4 + kit5 + kit2)
-      kit.yrange = [(m = kit.data.map{|dk| dk.y.data.min}.min; m-m.abs*0.1), (m=kit.data.map{|dk| dk.y.data.max}.max; m+m.abs*0.1)]
+      #kit.yrange = [(m = kit.data.map{|dk| dk.y.data.min}.min; m-m.abs*0.1), (m=kit.data.map{|dk| dk.y.data.max}.max; m+m.abs*0.1)]
       #kit += (kit2)
       kit = kit3 + kit
       kit.title = "Balance for #{name_c}"
@@ -317,9 +328,9 @@ EOF
 
       fork do
         (kit).gnuplot_write("#{name_c_file}_balance.eps", size: size) #, latex: true)
-        %x[epspdf -b #{name_c_file}_balance.eps]
+        %x[epstopdf #{name_c_file}_balance.eps]
       end
-      #%x[epspdf #{name}_balance.eps]
+      #%x[epstopdf #{name}_balance.eps]
     end
     # A string to include the balance graph in the document
     def balance_graph_string
@@ -355,7 +366,7 @@ EOF
         else
           0.0
         end
-      }.sum
+      }.sum + sum_of_assets
     end
     def balance(date=@reporter.today)
       @accounts.map{|acc|

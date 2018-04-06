@@ -28,7 +28,7 @@ module Analysis
     #ep ['account', account.name_c]
 		counter = 0
 		if not account.info[:period]
-      start_dates.push date
+      start_dates.push (account.info[:start]||@start_date)
 			end_dates.push date
 			account_items.push items
 			expenditures.push (items.map{|r| (r.deposit - r.withdrawal) * (account.info[:external] ? -1 : 1)}+[0]).sum

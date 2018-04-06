@@ -200,6 +200,7 @@ class Treasurer
       report << footer
 
       File.open('report.tex', 'w'){|f| f.puts report}
+      Process.wait
       system "lualatex report.tex && lualatex report.tex"
     end
     def account_summaries
@@ -239,14 +240,24 @@ EOF
     end
     def expense_account_summary
       <<EOF
-\\section{Expense Account Summary}
+\\section{Expense and Income Summary}
 \\subsection{Totals for #@days_before-day Budget Period}
-      #{expense_pie_charts_by_currency('accountperiod', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
+\\subsection{Expense}
+      #{expense_pie_charts_by_currency('accountperiod_expense', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
+\\subsection{Income}
+      #{expense_pie_charts_by_currency('accountperiod_income', @accounts.find_all{|acc| acc.type==:Income}){|r| r.days_ago(@today) < @days_before}}
 \\subsection{Expense Account Breakdown}
       #{@expense_accounts.find_all{|exaccount| exaccount.should_report?}.map{|exaccount|
           account = exaccount.report_account
           "
-\\subsection{#{account.name_c}}
+\\subsubsection{#{account.name_c}}
+      #{expense_pie_chart(account.name_c_file + 'breakdown', account.sub_accounts, account){|r|r.days_ago(@today) < @days_before }}"
+      }.join("\n\n")}
+\\subsection{Income Account Breakdown}
+      #{@accounts.find_all{|inaccount| inaccount.type==:Income and inaccount.should_report?}.map{|inaccount|
+          account = inaccount.report_account
+          "
+\\subsubsection{#{account.name_c}}
       #{expense_pie_chart(account.name_c_file + 'breakdown', account.sub_accounts, account){|r|r.days_ago(@today) < @days_before }}"
       }.join("\n\n")}
 EOF
@@ -284,21 +295,33 @@ EOF
               start_dates = start_dates.reverse
               pp ['DATES', start_dates, end_dates, subacc.name]
               return "No expenditure in account period." if end_dates.size==0
+              #keylabels = []
               k = (
                 end_dates.size.times.map do |i|
-                  exps = accounts.map{|acc| acc.deposited(end_dates[i], end_dates[i] - start_dates[i], &block)}
-                  kt = GraphKit.quick_create([labels.size.times.to_a.map{|l| l.to_f + i.to_f/end_dates.size.to_f}, exps])
+                  exps = []
+                  if subacc.type==:Expense
+                    exps = accounts.map{|acc| acc.deposited(end_dates[i], end_dates[i] - start_dates[i], &block)}
+                  else
+                    exps = accounts.map{|acc| acc.withdrawn(end_dates[i], end_dates[i] - start_dates[i], &block) - 
+                                        acc.deposited(end_dates[i], end_dates[i] - start_dates[i], &block)
+                    }
+                  end
+                  kt = GraphKit.quick_create([labels.size.times.to_a.map{|l| l.to_f + i.to_f/(end_dates.size+1).to_f}, exps])
                   kt.data[0].gp.title = "Ending #{end_dates[i].strftime("#{end_dates[i].mday.ordinalize} %B")}; total = #{exps.sum}"
-                  kt.gp.key = "tmargin"
+                  kt.gp.key = "rmargin"
+                  #keylabels.push "'Ending #{end_dates[i].strftime("#{end_dates[i].mday.ordinalize} %B")}; total = #{exps.sum}'"
+                  #kt.gp.key = "off rotate by 90"
                   kt
                 end
               ).sum
               k
             else
-              exps = accounts.map{|acc| acc.deposited(@today, 50000, &block)}
+              exps = accounts.map{|acc| acc.type==:Expense ? acc.deposited(@today, 50000, &block) - acc.withdrawn(@today, 50000, &block): acc.withdrawn(@today, 50000, &block) - acc.deposited(@today, 50000, &block)}
               labels, exps = [labels, exps].transpose.find_all{|l, e| e != 0.0}.transpose
               return "No expenditure in account period." if not labels #<F8> labels.size==0
-              GraphKit.quick_create([labels.size.times.to_a, exps])
+              k = GraphKit.quick_create([labels.size.times.to_a, exps])
+              k.data[0].gp.title = "Cumulative over budget period. Total = #{exps.sum}"
+              k
             end
 
 
@@ -315,20 +338,38 @@ EOF
       kit.gp.yrange = "[#{[kit.data[0].y.data.min,0].min}:]"
       #kit.gp.xrange = "[-1:#{labels.size+1}]"
       kit.gp.xrange = "[-1:1]" if labels.size==1
-      kit.gp.grid = "ytics"
+      kit.gp.mytics = "5"
+      kit.gp.ytics = "autofreq rotate by 45"
+      kit.gp.grid = "ytics mytics lw 2,lw 1"
       kit.xlabel = nil
       kit.ylabel = nil
       i = -1
-      kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 315"
+      kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 90 right"
       pp ['kit222', kit, labels]
       fork do
-        kit.gnuplot_write("#{name}.eps", size: "4.0in,2.0in")
-        %x[epspdf #{name}.eps]
+
+        kit.gp.key = "off"
+        kit.gnuplot_write("#{name}.eps", size: "#{[[labels.size.to_f/4.5, 4.5].min, 1.0].max}in,4.5in")
+        kit.gp.key = "tmargin"
+        kit.gp.border = "unset"
+        kit.gp.xtics = "unset"
+        kit.gp.ytics = "unset"
+        kit.gp.title = "unset"
+        kit.gp.xlabel = "unset"
+        kit.gp.ylabel = "unset"
+        #kit.gp.xrange = "[-100:-10]"
+        kit.gp.boxwidth = "#{0.0/kit.data.size} absolute"
+        kit.gp.object = " rect from screen 0, screen 0 to screen 1, graph 1 front fc rgb 'white' fillstyle solid noborder"     
+        #kit.gp.style = "fill empty noborder"
+        #kit.gp.yrange = "[-10:10]"
+        kit.gnuplot_write("#{name}_key.eps", size: "4.0in,1.5in")
+        %x[convert -density 500 #{name}_key.eps -resize 4000 -bordercolor white -border 20x20 -background white -flatten -trim  +repage #{name}_key.pdf]
+        #%x[convert -density 500 #{name}.eps -resize 4000 -bordercolor white -border 20x20 -background white -flatten -trim  +repage #{name}.pdf]
       end
 
       #"\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
       #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}.eps}\\vspace{1em}\\end{center}"
-      "\\myfigure{#{name}.pdf}"
+      "\\myfigurerot{#{name}.eps}{#{name}_key.pdf}{270}"
     end
     def get_in_limit_discretionary_account_factor(currency)
       @projected_account_factor = 1.0
@@ -380,13 +421,17 @@ EOF
 \\section{Discretionary Budget Summary (#{currency})}
 \\begin{tabulary}{0.9\\textwidth}{ R | r  r  r r  }
 Budget & Average & Projection & Limit & Stable \\\\
-      #{discretionary_accounts.map{|account, info|
+      #{tls = [0.0, 0.0, 0.0, 0.0] 
+        discretionary_accounts.map{|account, info|
       #ep info
-      "#{account.name_c} & #{account.average} & #{account.projection} & #{
-        (account.projection * @in_limit_discretionary_account_factors[currency]).round(2)} &
-      #{(account.projection * @stable_discretionary_account_factors[currency]).round(2)}  \\\\"
+          "#{account.name_c} & #{(tls[0]+=account.average).to_tex} & #{(tls[1]+=account.projection).to_tex} & #{
+        (tls[2]+=account.projection * @in_limit_discretionary_account_factors[currency]).to_tex} &
+      #{(tls[3]+=account.projection * @stable_discretionary_account_factors[currency]).to_tex}  \\\\"
       }.join("\n\n")
       }
+\\\\
+\\hline
+Totals & #{tls.map{|v| v.to_tex}.join(" & ")}
 \\end{tabulary}
 EOF
     end
@@ -450,7 +495,7 @@ EOF
           #ep ['kit1122', account, kit]
           fork do
             kit.gnuplot_write("#{account.name_c_file}.eps", size: "4.0in,2.0in")
-            exec "epspdf #{account.name_c_file}.eps"
+            exec "epstopdf #{account.name_c_file}.eps"
           end
           #%x[ps2eps #{account}.ps]
           #"\\begin{center}\\includegraphics[width=3.0in]{#{account}.eps}\\vspace{1em}\\end{center}"
@@ -597,9 +642,9 @@ EOF
 
     def header
       <<EOF
-\\documentclass[a5paper]{article}
-%\\usepackage[scale=0.9]{geometry}
-\\usepackage[left=1cm,top=1cm,right=1cm,nohead,nofoot]{geometry}
+\\documentclass[a5paper, 10pt]{article}
+%\\usepackage[scale=0.92]{geometry}
+\\usepackage[left=0.9cm,top=0.9cm,right=0.9cm,bottom=0.5cm,nohead,includefoot]{geometry}
 %\\usepackage[cm]{fullpage}
 \\usepackage{tabulary}
 \\usepackage{graphicx}
@@ -607,10 +652,22 @@ EOF
 \\usepackage{hyperref}
 \\usepackage{libertine}
 \\usepackage{xcolor,listings}
+\\usepackage{epstopdf}
 \\newcommand\\Tstrut{\\rule{0pt}{2.8ex}}
+\\newcommand\\myfigurerot[3]{\\vspace*{1em}\\begin{center}
+
+\\begin{minipage}{\\textwidth}
+\\includegraphics[clip,height=0.90\\textwidth,angle=#3]{#1}
+
+\\hfill
+\\includegraphics[width=0.5\\textwidth]{#2}
+\\end{minipage}
+\\end{center}\\vspace*{0em}
+
+}
 \\newcommand\\myfigure[1]{\\vspace*{1em}\\begin{center}
 
-\\includegraphics[width=0.99\\textwidth]{#1}
+\\includegraphics[clip,width=0.90\\textwidth]{#1}
 
 \\end{center}\\vspace*{0em}
 
@@ -621,16 +678,16 @@ identifierstyle = \\ttfamily\\color{purple},
 keywordstyle=\\ttfamily\\color{blue},
 stringstyle=\\color{orange}}
 \\usepackage[compact]{titlesec}
-\\titlespacing{\\section}{0pt}{*0}{*0}
-\\titlespacing{\\subsection}{0pt}{*0}{*2}
-\\titlespacing{\\subsubsection}{0pt}{*0}{*0}
-\\setlength{\\parskip}{0pt}
-\\setlength{\\parsep}{0pt}
-\\setlength{\\headsep}{0pt}
-\\setlength{\\topskip}{0pt}
-\\setlength{\\topmargin}{0pt}
-\\setlength{\\topsep}{0pt}
-\\setlength{\\partopsep}{0pt}
+%\\titlespacing{\\section}{0pt}{*0}{*0}
+%\\titlespacing{\\subsection}{0pt}{*0}{*2}
+%\\titlespacing{\\subsubsection}{0pt}{*0}{*0}
+%\\setlength{\\parskip}{0pt}
+%\\setlength{\\parsep}{0pt}
+%\\setlength{\\headsep}{0pt}
+%\\setlength{\\topskip}{0pt}
+%\\setlength{\\topmargin}{0pt}
+%\\setlength{\\topsep}{0pt}
+%\\setlength{\\partopsep}{0pt}
 \\begin{document}
 \\title{Budget Report from #{@start_date.strftime("%A #{@start_date.day.ordinalize} of %B %Y")} to #{@today.strftime("%A #{@today.day.ordinalize} of %B %Y")}}
 \\author{With projections to #{@end_date.strftime("%A #{@end_date.day.ordinalize} of %B %Y")}}
