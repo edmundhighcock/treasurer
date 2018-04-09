@@ -188,6 +188,7 @@ class Treasurer
       currency_list.each do |currency|
         report << discretionary_account_table(currency)
       end
+      report << available_balances_table
       report << account_balance_graphs
       report << expense_account_summary
       report << account_expenditure_graphs
@@ -200,7 +201,7 @@ class Treasurer
       report << footer
 
       File.open('report.tex', 'w'){|f| f.puts report}
-      Process.wait
+      Process.waitall
       system "lualatex report.tex && lualatex report.tex"
     end
     def account_summaries
@@ -240,11 +241,10 @@ EOF
     end
     def expense_account_summary
       <<EOF
-\\section{Expense and Income Summary}
-\\subsection{Totals for #@days_before-day Budget Period}
-\\subsection{Expense}
+\\section{Expense and Income Details}
+\\subsection{Expense totals for #@days_before-day Budget Period}
       #{expense_pie_charts_by_currency('accountperiod_expense', @expense_accounts){|r| r.days_ago(@today) < @days_before}}
-\\subsection{Income}
+\\subsection{Income totals for #@days_before-day Budget Period}
       #{expense_pie_charts_by_currency('accountperiod_income', @accounts.find_all{|acc| acc.type==:Income}){|r| r.days_ago(@today) < @days_before}}
 \\subsection{Expense Account Breakdown}
       #{@expense_accounts.find_all{|exaccount| exaccount.should_report?}.map{|exaccount|
@@ -343,13 +343,20 @@ EOF
       kit.gp.grid = "ytics mytics lw 2,lw 1"
       kit.xlabel = nil
       kit.ylabel = nil
+      kit.gp.decimalsign = 'locale "en_GB.UTF-8"'
+      kit.gp.format = [%["%'.2f"]]
       i = -1
       kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 90 right"
       pp ['kit222', kit, labels]
       fork do
 
         kit.gp.key = "off"
-        kit.gnuplot_write("#{name}.eps", size: "#{[[labels.size.to_f/4.5, 4.5].min, 1.0].max}in,4.5in")
+        kit.gnuplot_write("#{name}2.eps", size: "#{[[labels.size.to_f/4.5, 4.5].min, 1.0].max}in,4.5in")
+        system %[ps2epsi #{name}2.eps #{name}.eps]
+        system %[epstopdf #{name}.eps]
+
+      end
+      fork do
         kit.gp.key = "tmargin"
         kit.gp.border = "unset"
         kit.gp.xtics = "unset"
@@ -363,13 +370,13 @@ EOF
         #kit.gp.style = "fill empty noborder"
         #kit.gp.yrange = "[-10:10]"
         kit.gnuplot_write("#{name}_key.eps", size: "4.0in,1.5in")
-        %x[convert -density 500 #{name}_key.eps -resize 4000 -bordercolor white -border 20x20 -background white -flatten -trim  +repage #{name}_key.pdf]
+        system %[convert -density 500 #{name}_key.eps -resize 4000 -bordercolor white -border 20x20 -background white -flatten -trim  +repage #{name}_key.pdf]
         #%x[convert -density 500 #{name}.eps -resize 4000 -bordercolor white -border 20x20 -background white -flatten -trim  +repage #{name}.pdf]
       end
 
       #"\\begin{center}\\includegraphics[width=3.0in]{#{name}.eps}\\vspace{1em}\\end{center}"
       #"\\begin{center}\\includegraphics[width=0.9\\textwidth]{#{name}.eps}\\vspace{1em}\\end{center}"
-      "\\myfigurerot{#{name}.eps}{#{name}_key.pdf}{270}"
+      "\\myfigurerot{#{name}.pdf}{#{name}_key.pdf}{270}"
     end
     def get_in_limit_discretionary_account_factor(currency)
       @projected_account_factor = 1.0
@@ -421,17 +428,48 @@ EOF
 \\section{Discretionary Budget Summary (#{currency})}
 \\begin{tabulary}{0.9\\textwidth}{ R | r  r  r r  }
 Budget & Average & Projection & Limit & Stable \\\\
-      #{tls = [0.0, 0.0, 0.0, 0.0] 
+\\hline\\Tstrut
+      #{rows = 
         discretionary_accounts.map{|account, info|
-      #ep info
-          "#{account.name_c} & #{(tls[0]+=account.average).to_tex} & #{(tls[1]+=account.projection).to_tex} & #{
-        (tls[2]+=account.projection * @in_limit_discretionary_account_factors[currency]).to_tex} &
-      #{(tls[3]+=account.projection * @stable_discretionary_account_factors[currency]).to_tex}  \\\\"
-      }.join("\n\n")
+          [
+            account.name_c, 
+            account.average, 
+            account.projection,
+            account.projection * @in_limit_discretionary_account_factors[currency],
+            account.projection * @stable_discretionary_account_factors[currency]
+          ]
+        }
+        tls = rows.transpose.slice(1..4).map{|vals| vals.sum}
+        rows.map{|dat|
+          "#{dat[0]} & #{dat[1].to_tex} & #{dat[2].to_tex} & #{dat[3].to_tex} & #{dat[4].to_tex}  \\\\"
+        }.join("\n\n")
       }
-\\\\
-\\hline
+      #{if @report_currency 
+          "
+\\hline\\Tstrut
 Totals & #{tls.map{|v| v.to_tex}.join(" & ")}
+          "
+        end
+        }
+\\end{tabulary}
+EOF
+    end
+    
+    # A table showing the available balance for each kind of account,
+    # being the amount that can be spent today.
+    def available_balances_table
+      <<EOF
+\\section{Available Balances}
+\\begin{tabulary}{0.9\\textwidth}{R | r r c}
+Account & Balance & Available & Type\\\\
+\\hline\\Tstrut
+      #{
+      [:Equity, :Asset, :Liability].map{|type|
+        @accounts.find_all{|acc| acc.type == type}.map{|acc|
+          [acc.name_c, acc.balance(@today).to_tex, acc.available(@today).to_tex, type.to_s].join(" & ")
+        }.join("\\\\ \n")
+      }.join("\\\\ \n\n")
+      }
 \\end{tabulary}
 EOF
     end
@@ -491,10 +529,13 @@ EOF
           end
           kit.title = "#{account.name_c} Expenditure with average (Total = #{kit.data[0].y.data.sum})"
           CodeRunner::Budget.kit_time_format_x(kit)
+          kit.gp.decimalsign = 'locale "en_GB.UTF-8"'
+          kit.gp.format.push %[y "%'.2f"]
           #kit.gnuplot
           #ep ['kit1122', account, kit]
           fork do
-            kit.gnuplot_write("#{account.name_c_file}.eps", size: "4.0in,2.0in")
+            kit.gnuplot_write("#{account.name_c_file}2.eps", size: "4.0in,2.0in")
+            system "ps2epsi #{account.name_c_file}2.eps #{account.name_c_file}.eps"
             exec "epstopdf #{account.name_c_file}.eps"
           end
           #%x[ps2eps #{account}.ps]
@@ -612,7 +653,7 @@ EOF
 \\section{Recent Transactions}
       #{@accounts.find_all{|acc| not acc.type == :Equity}.sort_by{|acc| acc.external ? 0 : 1}.map{|acc|
       "\\subsection{#{acc.name_c}}
-\\tiny
+\\transactionsize
       #{all = acc.runs.find_all{|r|  r.days_ago(@today) < @days_before}
       case acc.type
       when :Expense, :Income
@@ -621,7 +662,7 @@ EOF
         all = all.sort_by{|r| [r.date, r.id]}.reverse
       end
       #ep ['acc', acc, 'ids', all.map{|r| r.id}, 'size', all.size]
-all.pieces((all.size.to_f/50.to_f).ceil).map{|piece|
+all.pieces((all.size.to_f/60.to_f).ceil).map{|piece|
   "\\setlength{\\parindent}{0cm}\n\n\\begin{tabulary}{0.99\\textwidth}{ #{"c " * 3 + " l " + " r " * 3 + "l"}}
   #{piece.map{|r|
   (CodeRunner::Budget.rcp.component_results - [:sc] + [:sub_account]).map{|res|
@@ -650,7 +691,13 @@ EOF
 \\usepackage{graphicx}
 \\usepackage{multicol}
 \\usepackage{hyperref}
-\\usepackage{libertine}
+%\\usepackage{libertine}
+%\\usepackage{helvetica}
+\\usepackage{fontspec}
+\\setmainfont[
+  BoldFont={Linux Biolinum O Bold},
+  BoldItalicFont={Linux Biolinum O Bold},
+  ]{Linux Biolinum O}
 \\usepackage{xcolor,listings}
 \\usepackage{epstopdf}
 \\newcommand\\Tstrut{\\rule{0pt}{2.8ex}}
@@ -672,12 +719,13 @@ EOF
 \\end{center}\\vspace*{0em}
 
 }
+\\newcommand{\\transactionsize}{\\scriptsize}
 \\lstset{%
 basicstyle=\\ttfamily\\color{black},
 identifierstyle = \\ttfamily\\color{purple},
 keywordstyle=\\ttfamily\\color{blue},
 stringstyle=\\color{orange}}
-\\usepackage[compact]{titlesec}
+\\usepackage[bf,compact]{titlesec}
 %\\titlespacing{\\section}{0pt}{*0}{*0}
 %\\titlespacing{\\subsection}{0pt}{*0}{*2}
 %\\titlespacing{\\subsubsection}{0pt}{*0}{*0}

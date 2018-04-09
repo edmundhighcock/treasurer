@@ -96,7 +96,7 @@ class Treasurer::Reporter
         :Expense
       end
     end
-    def red_line(date)
+    def red_line(date=@reporter.today)
       if Treasurer::LocalCustomisations.instance_methods.include? :red_line
         val = super(name, date)
         if rc = @reporter.report_currency and rc != @original_currency
@@ -120,6 +120,18 @@ class Treasurer::Reporter
     end
     def has_balance?
       not @runs.find{|r| not r.has_balance?} 
+    end
+    def available(date = @reporter.today)
+      case type
+      when :Asset, :Equity
+        b = balance
+        b - red_line
+      when :Liability
+        b = balance
+        red_line - b
+      else
+        nil
+      end
     end
     def balance(date = @reporter.today, options={}) 
       @balance_cache ||= {}
@@ -316,9 +328,19 @@ EOF
       kit.data[4].gp.with = "l lw 5 dt 2 lc rgb 'black' "
       kit.gp.key = ' bottom left '
       kit.gp.key = ' rmargin samplen 2'
+      kit.gp.decimalsign = 'locale "en_GB.UTF-8"'
+
+      #bal, avail = balance, available     
+        
+      if avail = available
+        kit.gp.label = [
+          %[ "Balance \\n#{balance}\\n\\nAvailable\\n#{avail}" at screen 0.95, screen 0.5 right],
+        ]
+      end
 
       #(p kit; STDIN.gets) if name == :LloydsCreditCard
       CodeRunner::Budget.kit_time_format_x(kit)
+      kit.gp.format.push %[y "%'.2f"]
       size = case type
              when :Equity
                "4.0in,4.0in"
@@ -327,8 +349,9 @@ EOF
              end
 
       fork do
-        (kit).gnuplot_write("#{name_c_file}_balance.eps", size: size) #, latex: true)
-        %x[epstopdf #{name_c_file}_balance.eps]
+        (kit).gnuplot_write("#{name_c_file}_balance2.eps", size: size) #, latex: true)
+        system %[ps2epsi #{name_c_file}_balance2.eps #{name_c_file}_balance.eps]
+        system %[epstopdf #{name_c_file}_balance.eps]
       end
       #%x[epstopdf #{name}_balance.eps]
     end
@@ -356,7 +379,7 @@ EOF
     def name
       :Equity
     end
-    def red_line(date)
+    def red_line(date=@reporter.today)
       @accounts.map{|acc|
         case acc.type
         when :Asset
