@@ -293,7 +293,7 @@ EOF
               start_dates, end_dates, _exps, _items = account_expenditure(subacc)
               end_dates = end_dates.reverse #Now from earliest to latest
               start_dates = start_dates.reverse
-              pp ['DATES', start_dates, end_dates, subacc.name]
+              #pp ['DATES', start_dates, end_dates, subacc.name]
               return "No expenditure in account period." if end_dates.size==0
               #keylabels = []
               k = (
@@ -314,6 +314,16 @@ EOF
                   kt
                 end
               ).sum
+              subaccount_datagroups = k.data.map{|dk| dk.y.data}.transpose
+              k.gp.label = subaccount_datagroups.size.times.map{|i|
+                "'#{sprintf("%.2f", subaccount_datagroups[i].mean)}' at #{i.to_f + 0.25}, graph 0.99 right rotate by 90 front textcolor rgb 'black' boxed" 
+              }
+              k.gp.label.push(
+                #"'Mean per budget period' at #{subaccount_datagroups.size.to_f}, graph 0.99 right rotate by 90 front textcolor rgb 'black' boxed " 
+                "'Mean expenditure per budget period' at -1.0, graph 0.99 right rotate by 90 front textcolor rgb 'black' boxed " 
+              )
+              k.gp.xrange = "[:#{subaccount_datagroups.size + 1.0}]"
+              k.gp.xrange = "[-1.5:]"
               k
             else
               exps = accounts.map{|acc| acc.type==:Expense ? acc.deposited(@today, 50000, &block) - acc.withdrawn(@today, 50000, &block): acc.withdrawn(@today, 50000, &block) - acc.deposited(@today, 50000, &block)}
@@ -334,10 +344,10 @@ EOF
 
       kit.data.each{|dk| dk.gp.with = 'boxes'}
       kit.gp.boxwidth = "#{0.8/kit.data.size} absolute"
-      kit.gp.style = "fill solid"
+      kit.gp.style = ["fill solid", "textbox opaque noborder fillcolor rgb 'white'"]
       kit.gp.yrange = "[#{[kit.data[0].y.data.min,0].min}:]"
       #kit.gp.xrange = "[-1:#{labels.size+1}]"
-      kit.gp.xrange = "[-1:1]" if labels.size==1
+      kit.gp.xrange = "[-1.5:1]" if labels.size==1
       kit.gp.mytics = "5"
       kit.gp.ytics = "autofreq rotate by 45"
       kit.gp.grid = "ytics mytics lw 2,lw 1"
@@ -347,23 +357,24 @@ EOF
       kit.gp.format = [%["%'.2f"]]
       i = -1
       kit.gp.xtics = "(#{labels.map{|l| %["#{l}" #{i+=1}]}.join(', ')}) rotate by 90 right"
-      pp ['kit222', kit, labels]
+      #pp ['kit222', kit, labels]
       fork do
 
         kit.gp.key = "off"
-        kit.gnuplot_write("#{name}2.eps", size: "#{[[labels.size.to_f/4.5, 4.5].min, 1.0].max}in,4.5in")
+        kit.gnuplot_write("#{name}2.eps", size: "#{[[labels.size.to_f/4.2, 5.0].min, 1.0].max}in,4.5in")
         system %[ps2epsi #{name}2.eps #{name}.eps]
         system %[epstopdf #{name}.eps]
 
       end
       fork do
-        kit.gp.key = "tmargin"
+        kit.gp.key = "tmargin left Left reverse"
         kit.gp.border = "unset"
         kit.gp.xtics = "unset"
         kit.gp.ytics = "unset"
         kit.gp.title = "unset"
         kit.gp.xlabel = "unset"
         kit.gp.ylabel = "unset"
+        kit.gp.label = "unset"
         #kit.gp.xrange = "[-100:-10]"
         kit.gp.boxwidth = "#{0.0/kit.data.size} absolute"
         kit.gp.object = " rect from screen 0, screen 0 to screen 1, graph 1 front fc rgb 'white' fillstyle solid noborder"     
@@ -704,10 +715,12 @@ EOF
 \\newcommand\\myfigurerot[3]{\\vspace*{1em}\\begin{center}
 
 \\begin{minipage}{\\textwidth}
+\\begin{center}
 \\includegraphics[clip,height=0.90\\textwidth,angle=#3]{#1}
 
-\\hfill
+\\vspace*{0.5em}
 \\includegraphics[width=0.5\\textwidth]{#2}
+\\end{center}
 \\end{minipage}
 \\end{center}\\vspace*{0em}
 

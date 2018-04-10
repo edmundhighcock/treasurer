@@ -167,7 +167,7 @@ class Treasurer::Reporter
       balance
     end
     def deposited(today, days_before, &block)
-      p ['name223344 is ', name_c, today, days_before]
+      #p ['name223344 is ', name_c, today, days_before]
       #@runs.find_all{|r| r.days_ago(today) < days_before and (!block or yield(r)) }.map{|r| (@external and not ([:Liability, :Income].include?(type))) ? r.withdrawal : r.deposit }.sum || 0
       @runs.find_all{|r| r.days_ago(today) < days_before and r.date <= today and (!block or yield(r)) }.map{|r| (@external) ? r.withdrawal : r.deposit }.sum || 0
     end
