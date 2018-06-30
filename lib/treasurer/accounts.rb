@@ -61,7 +61,7 @@ class Treasurer::Reporter
     def generate_report_account
       p [name_c, @report_runs.class, @runs.class]
       @report_account = ReportAccount.new(@name, @reporter, @runner, nil, @external, {currency: @currency, input_runs: @report_runs})
-      @report_account.instance_variable_set(:@currency, @reporter.report_currency)
+      @report_account.instance_variable_set(:@currency, @reporter.report_currency||currency)
       @report_account.instance_variable_set(:@original_currency, currency)
     end
 
@@ -176,7 +176,7 @@ class Treasurer::Reporter
       @runs.find_all{|r| r.days_ago(today) < days_before and r.date <= today }.map{|r| (@external) ? r.deposit : r.withdrawal }.sum || 0
     end
     def currency
-      @currency || (info[:currencies] && info[:currencies][0])
+      @currency || (info[:currencies] && info[:currencies][0]) || DEFAULT_CURRENCY
     end
     def currency_label
       if currency
@@ -234,8 +234,14 @@ EOF
       #(discretionary ? @reporter.sum_regular({name => info}, date) : 0.0)
     end
     def linked_projected_account_info
-      #Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_accounts] == name and ext_ac.currency == currency}]
-      Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_accounts][original_currency] and inf[:linked_accounts][original_currency] == name and ext_ac.original_currency == original_currency}]
+      #Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| inf[:linked_account] == name and ext_ac.currency == currency}]
+      Hash[@reporter.projected_accounts_info.find_all{|ext_ac,inf| 
+        la = inf[:linked_account] and (
+          la == name or
+          (la.kind_of? Hash and la[original_currency] and 
+           la[original_currency] == name and ext_ac.original_currency == original_currency)
+        )
+      }]
     end
     def cache
       @cache ||={}
@@ -250,7 +256,7 @@ EOF
           transfers.each do |accs, trans|
             next unless accs.include? name
             trans.each do |item, details|
-              if  details[:currency] != currency
+              if details[:currency] and details[:currency] != currency
                 #p ['LAGT(O', details[:currency], currency, details, name_c, item]
                 details[:size] *= EXCHANGE_RATES[[details[:currency], currency]]
               end

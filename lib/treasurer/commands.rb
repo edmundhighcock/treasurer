@@ -24,7 +24,7 @@ class << self
 	end
 	def fetch_reporter(copts = {})
 		load_treasurer_folder(copts)
-		Reporter.new(CodeRunner.fetch_runner(h: :component, A: true), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t], report_currency: copts[:r])
+		Reporter.new(CodeRunner.fetch_runner(h: :component), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t], report_currency: copts[:r])
 	end
   def status(copts={})
     load_treasurer_folder(copts)

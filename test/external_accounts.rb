@@ -5,21 +5,18 @@
    :sub_accounts=>
     {:Withdrawal=>{:name=>:Withdrawal, :sym=>"\e"},
      :Withdrawal2=>{:name=>:Withdrawal2, :sym=>"1"}}},
- :Utilities=>
-  {:name=>:Utilities,
-   :sym=>"2",
-   :sub_accounts=>{:Phone=>{:name=>:Phone, :sym=>"1"}}},
  :MonthlyExpenses=>
   {:name=>:MonthlyExpenses,
    :sym=>"3",
-   :sub_accounts=>{:Insurance=>{:name=>:Insurance, :sym=>"1"}}},
+   :sub_accounts=>{:Insurance=>{:name=>:Insurance, :sym=>"1"},
+   :Phone=>{:name=>:Phone, :sym=>"1"}}},
  :DailyExpenses=>
   {:name=>:DailyExpenses,
    :sym=>"4",
    :sub_accounts=>
     {:Food=>{:name=>:Food, :sym=>"1"}, :Rent=>{:name=>:Rent, :sym=>"2"}}},
- :Discretionary=>
-  {:name=>:Discretionary,
+ :Splurge=>
+  {:name=>:Splurge,
    :sym=>"5",
    :sub_accounts=>
     {:Gifts=>{:name=>:Gifts, :sym=>"1"},

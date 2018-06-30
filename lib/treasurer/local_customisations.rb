@@ -30,18 +30,20 @@ FUTURE_TRANSFERS = {
 
 FUTURE_TRANSFERS.default = {}
 
+DEFAULT_CURRENCY = "GBP"
 
 
 ACCOUNT_INFO = {
-	Monthly: {linked_account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
-	MonthlySecondBank: {linked_account: :SecondBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
-	Weekly: {linked_account: :FirstBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
-	WeeklySecondBank: {linked_account: :SecondBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
-	MyHoliday: {linked_account: :SecondBank, period: [1, :day], monthday: nil, start: Date.parse("02/12/2013"), end: Date.parse("2/01/2014"), discretionary: false},
+	MonthlyExpenses: {linked_account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
+	#MonthlySecondBank: {linked_account: :SecondBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: false},
+	DailyExpenses: {linked_account: :FirstBank, period: [1, :month], monthday: 1, start: nil, end: nil, discretionary: true},
+	#WeeklySecondBank: {linked_account: :SecondBank, period: [7, :day], monthday: nil, start: nil, end: nil, discretionary: true},
+	Splurge: {linked_account: :SecondBank, period: [1, :month], monthday: 1, start: Date.parse("02/12/2013"), discretionary: true},
 	PersonalLoans: {type: :Liability},
 	FirstBank: {type: :Asset},
 	SecondBank: {type: :Asset},
-	Pay: {linked_account: :FirstBank, type: :Income},
+	Cash: {type: :Asset},
+	Income: {linked_account: :FirstBank, type: :Income},
 }
 
 def in_date(item)
@@ -72,48 +74,7 @@ def red_line(account, date)
 	end
 end
 
+ASSETS={}
 
-def sub_account
-	case description
-	when /co-op|sainsbury/i 
-		:Food
-	when /insurance/i
-		:Insurance
-	when /Vodafone/i
-		:Phone
-	when /Adams/i
-		:Rent
-	when /Carfax|Lnk/i
-		:Cash
-	when /andalus/i, /angels/i, /maggie arms/i, /barley mow/i
-		:Entertainment
-	when /blackwell/i
-		:Books
-	else
-		:Unknown
-	end
-end
-
-def external_account
-	case description
-	when /Vodafone/i
-		:Monthly
-	when /norries/i
-		:PersonalLoans
-	when /my employer/i
-		:Pay
-	else
-		case sub_account
-		when :Food, :Entertainment
-			:Weekly
-		when :Insurance, :Phone, :Rent
-			:Monthly
-		when :Books, :Cash
-			:WeeklySecondBank
-		else
-			:Unknown
-		end
-	end
-end
-	
+    
 end

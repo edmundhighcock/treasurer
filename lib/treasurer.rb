@@ -96,8 +96,8 @@ class Treasurer
     # options (copts) hash
     def setup(copts)
       # None neededed
-      copts[:b] = copts[:b].to_i if copts[:b]
-      copts[:a] = copts[:a].to_i if copts[:a]
+      #copts[:b] = copts[:b].to_i if copts[:b]
+      #copts[:a] = copts[:a].to_i if copts[:a]
       copts[:t] = Date.parse(copts[:t]) if copts[:t]
     end
     def verbosity

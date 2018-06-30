@@ -75,21 +75,43 @@ class Treasurer
     attr_reader :stable_discretionary_account_factors
     attr_accessor :projected_account_factor
     attr_reader :accounts
-    attr_reader :equity
+    attr_reader :equities, :equity
     attr_reader :projected_accounts_info
     attr_reader :days_before
     attr_reader :report_currency
     attr_reader :accounts_hash
     def initialize(runner, options)
       @runner = runner
-      @days_ahead = options[:days_ahead]||180
-      @days_before = options[:days_before]||360
+      
       @today = options[:today]||Date.today
+      @days_ahead = case da = options[:days_ahead]
+                      when NilClass, ""
+                        180
+                      when Integer
+                        da
+                      when String
+                        da =~ /^\d+$/ ? da.to_i : Date.parse(da) - @today
+                      else
+                        raise ArgumentError.new("days_ahead")
+                      end
+      @days_before = case da = options[:days_before]
+                      when NilClass, ""
+                        360
+                      when Integer
+                        da
+                      when String
+                        da =~ /^\d+$/ ? da.to_i : @today - Date.parse(da) 
+                      else
+                        raise ArgumentError.new("days_before")
+                      end
+      puts @days_before, options[:days_before]
+      sleep 2
+
       @start_date = @today - @days_before
       @end_date = @today + @days_ahead
       @runs = runner.component_run_list.values
       @currencies = ACCOUNT_INFO.map{|k,v| v[:currencies]}.flatten.uniq
-      @report_currency = options[:report_currency]
+      @report_currency = options[:report_currency] 
 
       if run = @runs.find{|r| not r.external_account}
         raise "External_account not specified for #{run.data_line}"
@@ -128,7 +150,12 @@ class Treasurer
             er = EXCHANGE_RATES[[curr, @report_currency]]
             r.deposit *= er
             r.withdrawal *= er
-            r.balance *= er if r.has_balance?
+            begin
+              r.balance *= er if r.has_balance?
+            rescue => err
+              p [r.account, r.real_id, r.balance, er, r.data_line]
+              raise err
+            end
           end
         end
         ASSETS.each do |name, details|

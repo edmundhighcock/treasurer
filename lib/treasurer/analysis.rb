@@ -58,6 +58,7 @@ module Analysis
 					date-=1
 				end
 			when :day
+        raise "Period of days not implemented yet"
 				while date > @start_date
 					items_temp += items.find_all{|r| r.date == date}
 					#expenditure += (account_items[-1].map{|r| r.debit}+[0]).sum
