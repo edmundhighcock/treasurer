@@ -20,12 +20,12 @@ class TestTreaurer < MiniTest::Test
 			Treasurer.add_file('../otheraccountstatement.csv', 'SecondBank', {})
 			Treasurer.add_folder_of_files('../multiple')
 			Treasurer.status h: :component
-			RubyProf.start
-			Treasurer.create_report t: Date.parse('2010-09-07'), b: 40, a: 35
-			result = RubyProf.stop
-			result.eliminate_methods!([/Array#map/, /Array#each/])
-			printer = RubyProf::GraphHtmlPrinter.new(result)
-			File.open('timing.html', 'w'){|f| printer.print(f, {})}
+			#RubyProf.start
+			#Treasurer.create_report t: Date.parse('2010-09-07'), b: 40, a: 35
+			#result = RubyProf.stop
+			#result.eliminate_methods!([/Array#map/, /Array#each/])
+			#printer = RubyProf::GraphHtmlPrinter.new(result)
+			#File.open('timing.html', 'w'){|f| printer.print(f, {})}
 			reporter = Treasurer.fetch_reporter(t: Date.parse('2010-09-07'), b: 40, a: 35)
 			reporter.generate_accounts
       assert_equal(1, reporter.accounts_hash[:FirstBank].runs.find_all{|r| r.description =~ /BLACKW/}.size)

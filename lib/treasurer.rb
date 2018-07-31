@@ -110,10 +110,12 @@ end
 $has_put_startup_message_for_code_runner = true
 require 'date'
 require 'coderunner'
+CodeRunner.setup_run_class('budget')
 require 'treasurer/commands.rb'
 require 'treasurer/report.rb'
 require 'treasurer/analysis.rb'
 require 'treasurer/accounts.rb'
+require 'treasurer/account_choices.rb'
 
 
 ######################################

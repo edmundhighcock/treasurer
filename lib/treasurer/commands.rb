@@ -24,7 +24,10 @@ class << self
 	end
 	def fetch_reporter(copts = {})
 		load_treasurer_folder(copts)
-		Reporter.new(CodeRunner.fetch_runner(h: :component), days_before: copts[:b]||360, days_ahead: copts[:a]||180, today: copts[:t], report_currency: copts[:r])
+		Reporter.new(
+      CodeRunner.fetch_runner(h: :component),
+      days_before: copts[:b]||360, days_ahead: copts[:a]||180,
+      today: copts[:t], report_currency: copts[:r])
 	end
   def status(copts={})
     load_treasurer_folder(copts)
@@ -33,10 +36,16 @@ class << self
 	def init_root_folder(folder, copts={})
 		raise "Folder already exists" if FileTest.exist? folder
 		FileUtils.makedirs(folder)
-		FileUtils.cp(SCRIPT_FOLDER + '/treasurer/local_customisations.rb', folder + '/local_customisations.rb')
+		FileUtils.cp(
+      SCRIPT_FOLDER + '/treasurer/local_customisations.rb',
+      folder + '/local_customisations.rb')
 		CodeRunner.fetch_runner(Y: folder, C: 'budget', X: '/dev/null')
+    init_sqlite(folder)
 		eputs "\n\n Your treasurer folder '#{folder}' has been set up. All further treasurer commands should be run from within this folder.\n"
 	end
+  def init_sqlite(folder)
+    CodeRunner::Budget.init_sqlite(folder)
+  end
 	def load_treasurer_folder(copts={})
 		check_is_treasurer_folder
 		Treasurer.send(:remove_const, :LocalCustomisations) if defined? Treasurer::LocalCustomisations
@@ -63,4 +72,7 @@ class << self
 		CodeRunner.send(meth, *args)
 	end
 end
+end
+
+class CodeRunner::Budget
 end

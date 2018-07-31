@@ -3,8 +3,9 @@ source "http://rubygems.org"
 # Example:
 gem "activesupport", ">= 5.0.0"
     gem "coderunner", ">= 0.14.16"
-    gem "budgetcrmod", "~> 0.4.2"
+    gem "budgetcrmod", "~> 0.5.0"
     gem "command-line-flunky", ">= 1.0.0"
+    gem "sqlite3", "~> 1.3" 
 
 # Add dependencies to develop your gem here.
 # Include everything needed to run rake, tests, features, etc.

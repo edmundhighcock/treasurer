@@ -1,34 +1,76 @@
 
 class CodeRunner::Budget
-  # All transactions occur between two accounts. 
-  # One of those accounts is always physical (e.g. bank account, loan, credit card)
-  # and the other can be either physical or a virtual account of the users choice,
-  # e.g. Food or Petrol or Energy, or maybe WeeklyBudget and LongTermBudget etc.
-  def external_account
-    return @external_account if @external_account
-    ext_account = false
-    unless @runner
-      raise "No runner for " + data_line
+  # Initialize the sqlite database that stores the user
+  # choices for external_account and sub_account  
+  def self.init_sqlite(folder)
+    require 'sqlite3'
+    FileUtils.makedirs(folder + '/sqlite')
+    Dir.chdir(folder + '/sqlite') do 
+      db = sqlitedb(Dir.pwd) 
+      _rows = db.execute <<-SQL
+        create table choices (
+          id int primary key,
+          signature text,
+          external_account text,
+          sub_account text
+        );
+      SQL
+
     end
-    Dir.chdir(@runner.root_folder) do
-      chosen = false
-      Hash.phoenix('account_choices.rb') do |choices_hash|
-        if choices_hash[signature]
-          chosen = choices_hash[signature][:external_account]
-        elsif choices_hash[data_line] 
-          #choices_hash[data_line][:external_account] = 
-          #choices_hash[data_line][:external_account].to_sym #fixes earlier bug
-          #choices_hash[data_line][:sub_account] = 
-          #choices_hash[data_line][:sub_account].to_sym #fixes earlier bug
-          chosen = choices_hash[data_line][:external_account]
-          choices_hash[signature] = choices_hash[data_line]
-          choices_hash.delete(data_line)
-        elsif choices_hash[old_data_line]
-          chosen = choices_hash[old_data_line][:external_account]
-          choices_hash[signature] = choices_hash[old_data_line]
-        end
+  end
+
+  def self.sqlitedb(folder)
+    SQLite3::Database.new folder + "/treasurer.db"
+  end
+
+  def sqlitedb
+    self.class.sqlitedb(@runner.root_folder + '/sqlite')
+  end
+
+  # Get stored choices from the old flat files
+  def get_old_choices
+    chosen = false
+    Hash.phoenix(@runner.root_folder + '/account_choices.rb') do |choices_hash|
+      if choices_hash[signature]
+        chosen = choices_hash[signature]
+      elsif choices_hash[data_line] 
+        #choices_hash[data_line][:external_account] = 
+        #choices_hash[data_line][:external_account].to_sym #fixes earlier bug
+        #choices_hash[data_line][:sub_account] = 
+        #choices_hash[data_line][:sub_account].to_sym #fixes earlier bug
+        chosen = choices_hash[data_line]
+        choices_hash[signature] = choices_hash[data_line]
+        choices_hash.delete(data_line)
+      elsif choices_hash[old_data_line]
+        chosen = choices_hash[old_data_line]
+        choices_hash[signature] = choices_hash[old_data_line]
       end
-      return @external_account = chosen if chosen
+    end
+    if chosen
+      puts "ADDING TO DB"
+      add_sqlite_choices(chosen)
+    end
+    chosen||{}
+  end
+
+  def add_sqlite_choices(chosen)
+    sqlitedb.execute(
+      'insert into choices  ' + 
+      '(signature, external_account, sub_account) values (?, ?, ?)', 
+      [:signature, :external_account, :sub_account].map{|k|
+        (chosen[k]||signature).inspect
+      }
+    )
+  end
+
+  # Get stored choices from the sqlite database
+  def get_sqlite_choices
+    {}
+  end
+
+  # Get new choices from the user interactively.  
+  def get_new_choices
+    Dir.chdir(@runner.root_folder) do
       chosen = false
       sym = nil
       while not chosen
@@ -128,14 +170,35 @@ class CodeRunner::Budget
           end
         end
         next if not chosen
-        Hash.phoenix('account_choices.rb') do |choices_hash|
-          choices_hash[signature] = {external_account: ext_account, sub_account: chosen}
-        end
+        #Hash.phoenix('account_choices.rb') do |choices_hash|
+          #choices_hash[signature] = {external_account: ext_account, sub_account: chosen}
+        #end
+        add_sqlite_choices({external_account: ext_account, sub_account: chosen})
       end #while not chosen
 
     end
-    ext_account
+    {external_account: ext_account, sub_account: chosen}
   end
+
+
+  # All transactions occur between two accounts. 
+  # One of those accounts is always physical (e.g. bank account, loan, credit card)
+  # and the other can be either physical or a virtual account of the users choice,
+  # e.g. Food or Petrol or Energy, or maybe WeeklyBudget and LongTermBudget etc.
+  def external_account
+    unless @runner
+      raise "No runner for " + data_line
+    end
+    if not @external_account
+      @external_account = (
+        get_sqlite_choices[:external_account] or
+        get_old_choices[:external_account] or
+        get_new_choices[:external_account] 
+      )
+    end
+    return @external_account
+  end
+  
   # All transactions have a subaccount. For transactions between
   # physical accounts this will almost always be just 'Transfer'
   # or similar, but virtual accounts will have more meaningful
