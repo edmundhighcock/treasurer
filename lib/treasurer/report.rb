@@ -80,6 +80,7 @@ class Treasurer
     attr_reader :days_before
     attr_reader :report_currency
     attr_reader :accounts_hash
+    attr_reader :runner
     def initialize(runner, options)
       @runner = runner
       
@@ -119,6 +120,7 @@ class Treasurer
       @indateruns = @runs.find_all{|r| r.days_ago(@today) < @days_before}
       @stable_discretionary_account_factors = {}
       @in_limit_discretionary_account_factors = {}
+      @runner = runner
       #p 'accounts256',@runs.size, @runs.map{|r| r.account}.uniq
 
     end

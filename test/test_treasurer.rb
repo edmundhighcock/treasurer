@@ -31,6 +31,7 @@ class TestTreaurer < MiniTest::Test
       assert_equal(1, reporter.accounts_hash[:FirstBank].runs.find_all{|r| r.description =~ /BLACKW/}.size)
       assert_equal(1032.08, reporter.equities.values[0].balance.round(2))
       assert_equal(1825.28, reporter.equities.values[0].projected_balance(Date.parse('2010-10-09')).round(2))
+      p reporter.runner.component_run_list.values[-1].get_sqlite_choices
 		end
 		#FileUtils.rm_r(testfolder) if FileTest.exist? testfolder
 	end

@@ -1,4 +1,5 @@
 
+require 'sqlite3'
 class CodeRunner::Budget
   # Initialize the sqlite database that stores the user
   # choices for external_account and sub_account  
@@ -8,11 +9,25 @@ class CodeRunner::Budget
     Dir.chdir(folder + '/sqlite') do 
       db = sqlitedb(Dir.pwd) 
       _rows = db.execute <<-SQL
+        create table external_accounts (
+          eid INTEGER primary key,
+          external_account text
+        );
+      SQL
+      _rows = db.execute <<-SQL
+        create table sub_accounts (
+          sid INTEGER primary key,
+          sub_account text,
+          eid INTEGER,
+          foreign key (eid) references external_accounts (eid)
+        );
+      SQL
+      _rows = db.execute <<-SQL
         create table choices (
-          id int primary key,
+          id INTEGER primary key,
           signature text,
-          external_account text,
-          sub_account text
+          sid INTEGER,
+          foreign key (sid) references sub_accounts (sid)
         );
       SQL
 
@@ -53,25 +68,98 @@ class CodeRunner::Budget
     chosen||{}
   end
 
+  def sqlite_eid(account_spec)
+    eid = nil
+    until eid
+      rows = sqlitedb.execute(
+        'SELECT (eid) ' +
+        'FROM external_accounts ' +
+        'WHERE external_account = ? ', 
+        account_spec[:external_account].inspect
+      )
+      pp 'ROWSSS', rows
+      if rows.size < 1
+        sqlitedb.execute(
+          'INSERT INTO external_accounts  ' + 
+          '(external_account) VALUES (?)', 
+          account_spec[:external_account].inspect
+        )
+      elsif rows.size > 1
+        raise "Duplicate external_accounts"
+      else
+        eid=rows[0][0]
+        raise TypeError.new("Bad eid: #{eid.inspect}") unless eid.kind_of? Integer 
+      end
+    end
+    eid
+  end
+
+  def sqlite_sid(account_spec)
+    eid = sqlite_eid(account_spec)
+    sid = nil
+    until sid
+      rows = sqlitedb.execute(
+        'SELECT (sid) ' +
+        'FROM sub_accounts ' +
+        'WHERE sub_account = ? AND eid= ?', 
+        [account_spec[:sub_account].inspect, eid]
+      )
+      pp 'ROWSSS', rows
+      if rows.size < 1
+        sqlitedb.execute(
+          'INSERT INTO sub_accounts  ' + 
+          '(sub_account, eid) VALUES (?, ?)', 
+          [account_spec[:sub_account].inspect, eid]
+        )
+      elsif rows.size > 1
+        raise "Duplicate sub_accounts"
+      else
+        sid=rows[0][0]
+        raise TypeError.new("Bad sid: #{sid.inspect}") unless sid.kind_of? Integer 
+      end
+    end
+    sid
+  end
+
   def add_sqlite_choices(chosen)
+    sid = sqlite_sid(chosen)
     sqlitedb.execute(
-      'insert into choices  ' + 
-      '(signature, external_account, sub_account) values (?, ?, ?)', 
-      [:signature, :external_account, :sub_account].map{|k|
-        (chosen[k]||signature).inspect
-      }
+      'INSERT INTO choices' + 
+      '(signature, sid) VALUES (?, ?)', 
+      [signature.inspect, sid]
     )
   end
 
   # Get stored choices from the sqlite database
   def get_sqlite_choices
-    {}
+    rows = sqlitedb.execute(
+      'SELECT external_account, sub_account ' +
+      'FROM choices ' +
+      'LEFT JOIN sub_accounts  ON ' +
+      'sub_accounts.sid = choices.sid '  +
+      'LEFT JOIN external_accounts  ON ' +
+      'external_accounts.eid = sub_accounts.eid ' +
+      'WHERE signature = ?', 
+      signature.inspect
+    )
+    pp "RRRRROOO", rows
+    if rows.size == 1
+      return {
+        external_account: eval(rows[0][0]),
+        sub_account: eval(rows[0][1]),
+      }
+    elsif rows.size > 1
+      raise "Duplicate signatures in sqlitedb"
+    else
+      return {}
+    end
   end
 
   # Get new choices from the user interactively.  
   def get_new_choices
+    ext_account = nil
+    chosen = false
     Dir.chdir(@runner.root_folder) do
-      chosen = false
       sym = nil
       while not chosen
         Hash.phoenix('external_accounts.rb') do |account_hash|
