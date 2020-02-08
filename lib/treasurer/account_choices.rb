@@ -174,7 +174,7 @@ class CodeRunner::Budget
           puts
           puts "Account: " + account
           puts
-          puts choices.inspect
+          puts choices.map{|k,v| Terminal::LIGHT_GREEN + k + ":" + Terminal.default_colour + v}.join(" ")
           puts
           puts "Please choose from the above external accounts for this transaction."
           puts "If you wish to add a new account type 0. To quit type q"
@@ -280,11 +280,12 @@ class CodeRunner::Budget
     if not @external_account
       @external_account = (
         get_sqlite_choices[:external_account] or
-        get_old_choices[:external_account]
+        get_old_choices[:external_account] or
+        get_new_choices[:external_account]
       )
-      if not @external_account
-        raise "No external account for #{data_line}"
-      end
+      #if not @external_account
+        #raise "No external account for #{data_line}"
+      #end
     end
     return @external_account
   end
