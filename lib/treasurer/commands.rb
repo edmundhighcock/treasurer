@@ -29,6 +29,12 @@ class << self
       days_before: copts[:b]||360, days_ahead: copts[:a]||180,
       today: copts[:t], report_currency: copts[:r])
 	end
+  def assign(copts={})
+    load_treasurer_folder(copts)
+    crcopts = eval(copts[:C]||"{}")
+    crcopts[:h] = :component
+    CodeRunner.run_command('external_account', crcopts)
+  end
   def status(copts={})
     load_treasurer_folder(copts)
     CodeRunner.status(eval(copts[:C]||"{}"))

@@ -45,6 +45,7 @@ EOF
   COMMANDS_WITH_HELP = [
     ['add_file', 'add', 2,  'Import a new internet banking spreadsheet for the given account.', ['csv spreadsheet filename', 'account name'], []],
     ['add_folder_of_files', 'addf', 1,  'Import all internet banking spreadsheets within the given folder .', ['folder'], []],
+    ['assign', 'ag', 0,  'Assign all transactions an external account.', [], []],
     ['init_root_folder', 'init', 1,  'Create a new folder and initialise it for storing treasurer data.', ['folder'], []],
     ['list_last_updated', 'last', 1,  'For each account, prints the date of the latest entry.', ['folder'], []],
     ['create_report', 'report', 0,  'Generate a detailed report (typeset using latex) showing account activity, spending by category, and projections.', [], [:a, :b, :t]],

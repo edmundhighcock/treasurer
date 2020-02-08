@@ -280,9 +280,11 @@ class CodeRunner::Budget
     if not @external_account
       @external_account = (
         get_sqlite_choices[:external_account] or
-        get_old_choices[:external_account] or
-        get_new_choices[:external_account] 
+        get_old_choices[:external_account]
       )
+      if not @external_account
+        raise "No external account for #{data_line}"
+      end
     end
     return @external_account
   end
