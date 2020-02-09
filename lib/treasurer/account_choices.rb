@@ -233,11 +233,11 @@ class CodeRunner::Budget
           #choices_hash[data_line] = {external_account: chosen}
           #end
         end
+        next if not chosen
         if ext_account and chosen
             break
         end
         ext_account = chosen
-        next if not chosen
         chosen = false
         Hash.phoenix('external_accounts.rb') do |account_hash|
           #choices = account_arr.size.times.map{|i| [i,account_arr[i][:name]]}
@@ -274,6 +274,7 @@ class CodeRunner::Budget
               chosen = name
             elsif choice == "z"
               chosen = false
+              ext_account = nil
               break
             elsif not choices.keys.include? choice
               puts "Error: this symbol does not correspond to a sub-account"
