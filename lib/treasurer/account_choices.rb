@@ -159,6 +159,8 @@ class CodeRunner::Budget
   def get_new_choices
     ext_account = nil
     chosen = false
+    transactions = runner.component_run_list.values.sort_by{|r| r.date}
+    idx = transactions.index(self)
     Dir.chdir(@runner.root_folder) do
       sym = nil
       while not chosen
@@ -169,7 +171,14 @@ class CodeRunner::Budget
           puts Terminal.default_colour
           puts
           puts "-" * data_line.size
-          puts signature.inspect
+          #format = Proc.new{|runs| runs.map{|r| r.signature.map{|d| d.to_s}.join(",")}.join("\n")}
+          format = Proc.new{|runs| runs.map{|r| 
+            sprintf("%-40s %5.2f %5.2f %5.2f %12s", r.description, r.deposit, r.withdrawal, r.balance, r.account)
+          }.join("\n")}
+          puts format.call(transactions.slice([idx-10, 0].max, idx-1))
+          puts Terminal::LIGHT_GREEN + format.call([transactions[idx]]) + "<-----" + Terminal.default_colour
+          sz = transactions.size
+          puts format.call(transactions.slice([idx+1, sz].min, [idx+10,sz].min))
           puts "-" * data_line.size
           puts
           puts "Account: " + account
