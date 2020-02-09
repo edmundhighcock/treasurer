@@ -161,33 +161,41 @@ class CodeRunner::Budget
     chosen = false
     transactions = runner.component_run_list.values.sort_by{|r| r.date}
     idx = transactions.index(self)
+    ff = Proc.new{|float| float ? sprintf("%8.2f", float) : " "*8}
+    format = Proc.new{|runs| runs.map{|r| 
+      #begin
+        sprintf("%70s %s %8s %8s %8s %-12s", r.description[0,70], r.date.to_s, ff.call(r.deposit), ff.call(r.withdrawal), ff.call(r.balance), r.account)
+      #rescue
+        #p r
+        #p r.data_line
+        #exit
+      #end
+    }.join("\n")}
+    format_choices = Proc.new{|chs| chs.map{|k,v| Terminal::LIGHT_GREEN + k + ":" + Terminal.default_colour + v}.join(" ")}
     Dir.chdir(@runner.root_folder) do
       sym = nil
+      print_transactions = Proc.new do
+            puts format.call(transactions.slice([idx-30, 0].max, 30))
+            puts Terminal::LIGHT_GREEN + format.call([transactions[idx]]) + "<-----" + Terminal.default_colour
+            sz = transactions.size
+            puts format.call(transactions.slice([idx+1, sz-1].min, 10))
+      end
       while not chosen
         Hash.phoenix('external_accounts.rb') do |account_hash|
           #account_hash.each{|k,v| v[:name] = v[:name].to_sym} #Fixes an earlier bug
           #choices = account_arr.size.times.map{|i| [i,account_arr[i][:name]]}
           choices = account_hash.map{|k,v| [v[:sym], k]}.to_h
+          choices["-"] = "Transfer"
           puts Terminal.default_colour
-          puts
-          puts "-" * data_line.size
+          print_transactions.call
           #format = Proc.new{|runs| runs.map{|r| r.signature.map{|d| d.to_s}.join(",")}.join("\n")}
-          format = Proc.new{|runs| runs.map{|r| 
-            sprintf("%-40s %5.2f %5.2f %5.2f %12s", r.description, r.deposit, r.withdrawal, r.balance, r.account)
-          }.join("\n")}
-          puts format.call(transactions.slice([idx-10, 0].max, idx-1))
-          puts Terminal::LIGHT_GREEN + format.call([transactions[idx]]) + "<-----" + Terminal.default_colour
-          sz = transactions.size
-          puts format.call(transactions.slice([idx+1, sz].min, [idx+10,sz].min))
-          puts "-" * data_line.size
           puts
-          puts "Account: " + account
+          puts format_choices.call(choices)
           puts
-          puts choices.map{|k,v| Terminal::LIGHT_GREEN + k + ":" + Terminal.default_colour + v}.join(" ")
-          puts
-          puts "Please choose from the above external accounts for this transaction."
-          puts "If you wish to add a new account type 0. To quit type q"
-          puts "To start again for this transaction, type z"
+          puts "Please choose from the above external accounts for this transaction." +
+            "If you wish to add a new account type 0. To quit type q. " +
+                "To start again for this transaction, type z. To mark it as transfer between" +
+                "two non-external accounts, press -."
           while not chosen
             require 'io/console'
             choice = STDIN.getch
@@ -211,6 +219,10 @@ class CodeRunner::Budget
             elsif choice == "z"
               chosen = false
               break
+            elsif choice == "-"
+              ext_account = "Transfer"
+              chosen = "Transfer"
+              break
             elsif not choices.keys.include? choice
               puts "Error: this symbol does not correspond to an account"
             else
@@ -221,6 +233,9 @@ class CodeRunner::Budget
           #choices_hash[data_line] = {external_account: chosen}
           #end
         end
+        if ext_account and chosen
+            break
+        end
         ext_account = chosen
         next if not chosen
         chosen = false
@@ -229,13 +244,14 @@ class CodeRunner::Budget
           sub_accounts = account_hash[ext_account][:sub_accounts]
           sub_accounts.each{|k,v| v[:name] = v[:name].to_sym} #Fixes an earlier bug
           choices = sub_accounts.map{|k,v| [v[:sym], k]}.to_h
-          puts "-" * data_line.size
+          #puts "-" * data_line.size
+          print_transactions.call
           puts
-          puts choices.inspect
+          puts format_choices.call(choices)
           puts
-          puts "Please choose from the above sub-accounts for this transaction."
-          puts "If you wish to add a new sub account, type 0. To quit, type q"
-          puts "To start again for this transaction, type z"
+          puts "Please choose from the above sub-accounts for this transaction. " + 
+            "If you wish to add a new sub account, type 0. To quit, type q. " +
+            "To start again for this transaction, type z"
           while not chosen
             require 'io/console'
             choice = STDIN.getch
@@ -270,9 +286,8 @@ class CodeRunner::Budget
         #Hash.phoenix('account_choices.rb') do |choices_hash|
           #choices_hash[signature] = {external_account: ext_account, sub_account: chosen}
         #end
-        add_sqlite_choices({external_account: ext_account, sub_account: chosen})
       end #while not chosen
-
+      add_sqlite_choices({external_account: ext_account, sub_account: chosen})
     end
     {external_account: ext_account, sub_account: chosen}
   end

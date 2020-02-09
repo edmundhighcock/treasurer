@@ -32,7 +32,12 @@ class << self
   def assign(copts={})
     load_treasurer_folder(copts)
     crcopts = eval(copts[:C]||"{}")
+    #crcopts[:h] = nil
+    #CodeRunner.run_command('generate_component_runs', crcopts)
     crcopts[:h] = :component
+    crcopts[:O] = 'date'
+    crcopts[:f] = 'not (component_runs and component_runs.size > 0 and component_runs[0].instance_variable_get(:@external_account))'
+    crcopts[:f] = 'not (@external_account and @sub_account)'
     CodeRunner.run_command('external_account', crcopts)
   end
   def status(copts={})
