@@ -34,8 +34,10 @@ class CodeRunner::Budget
     end
   end
 
+  DATABASES={}
+
   def self.sqlitedb(folder)
-    SQLite3::Database.new folder + "/treasurer.db"
+    DATABASES[folder] ||= SQLite3::Database.new folder + "/treasurer.db"
   end
 
   def sqlitedb
@@ -142,7 +144,7 @@ class CodeRunner::Budget
       'WHERE signature = ?', 
       signature.inspect
     )
-    pp "RRRRROOO", rows
+    #pp "RRRRROOO", rows
     if rows.size == 1
       return {
         external_account: eval(rows[0][0]),
