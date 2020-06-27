@@ -393,8 +393,11 @@ EOF
       fork do
 
         kit.gp.key = "off"
-        kit.gnuplot_write("#{name}2.eps", size: "#{[[labels.size.to_f/4.2, 5.0].min, 1.0].max}in,4.5in")
-        system %[ps2epsi #{name}2.eps #{name}.eps]
+        #kit.gnuplot_write("#{name}2.eps", size: "#{[[labels.size.to_f/4.2, 5.0].min, 1.0].max}in,4.5in")
+        kit.gnuplot_write("#{name}.eps", size: "#{[[labels.size.to_f/4.2, 5.0].min, 1.0].max}in,4.5in")
+        # Deprecate ps2epsi... fails on bounding boxes.
+        #system %[ps2epsi #{name}2.eps #{name}.eps]
+        #system %[ps2eps < #{name}2.eps > #{name}.eps]
         system %[epstopdf #{name}.eps]
 
       end
@@ -577,8 +580,11 @@ EOF
           #kit.gnuplot
           #ep ['kit1122', account, kit]
           fork do
-            kit.gnuplot_write("#{account.name_c_file}2.eps", size: "4.0in,2.0in")
-            system "ps2epsi #{account.name_c_file}2.eps #{account.name_c_file}.eps"
+            #kit.gnuplot_write("#{account.name_c_file}2.eps", size: "4.0in,2.0in")
+            kit.gnuplot_write("#{account.name_c_file}.eps", size: "4.0in,2.0in")
+            #system "ps2epsi #{account.name_c_file}2.eps #{account.name_c_file}.eps"
+            # ps2epsi can break.. we use ps2eps instead!
+            #system "ps2eps < #{account.name_c_file}2.eps > #{account.name_c_file}.eps"
             exec "epstopdf #{account.name_c_file}.eps"
           end
           #%x[ps2eps #{account}.ps]

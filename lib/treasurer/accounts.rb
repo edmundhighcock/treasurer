@@ -355,8 +355,11 @@ EOF
              end
 
       fork do
-        (kit).gnuplot_write("#{name_c_file}_balance2.eps", size: size) #, latex: true)
-        system %[ps2epsi #{name_c_file}_balance2.eps #{name_c_file}_balance.eps]
+        #(kit).gnuplot_write("#{name_c_file}_balance2.eps", size: size) #, latex: true)
+        (kit).gnuplot_write("#{name_c_file}_balance.eps", size: size) #, latex: true)
+        # Deprecate ps2epsi
+        # system %[ps2epsi #{name_c_file}_balance2.eps #{name_c_file}_balance.eps]
+        #system %[ps2eps < #{name_c_file}_balance2.eps > #{name_c_file}_balance.eps]
         system %[epstopdf #{name_c_file}_balance.eps]
       end
       #%x[epstopdf #{name}_balance.eps]
