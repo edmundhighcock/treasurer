@@ -134,16 +134,14 @@ class CodeRunner::Budget
 
   # Get stored choices from the sqlite database
   def get_sqlite_choices
-    rows = sqlitedb.execute(
-      'SELECT external_account, sub_account ' +
+    query = 'SELECT external_account, sub_account ' +
       'FROM choices ' +
       'LEFT JOIN sub_accounts  ON ' +
       'sub_accounts.sid = choices.sid '  +
       'LEFT JOIN external_accounts  ON ' +
       'external_accounts.eid = sub_accounts.eid ' +
-      'WHERE signature = ?', 
-      signature.inspect
-    )
+      'WHERE signature = ?' 
+    rows = sqlitedb.execute(query, signature.inspect)
     #pp "RRRRROOO", rows
     if rows.size == 1
       return {
@@ -151,10 +149,30 @@ class CodeRunner::Budget
         sub_account: eval(rows[0][1]),
       }
     elsif rows.size > 1
+      puts query, signature.inspect
       raise "Duplicate signatures in sqlitedb"
     else
       return {}
     end
+  end
+
+  def get_matched_choices
+    choices = {}
+    CUSTOM_ASSIGNMENTS.each do |spec|
+      match = true
+      spec[0].each do |key, regex|
+        match = (match && send(key) =~ regex)
+      end
+      if match
+        choices[:external_account] = spec[1][0]
+        choices[:sub_account] = spec[1][1]
+        add_sqlite_choices(choices)
+        break
+      end
+    end
+    puts ["Assigned automatically:", signature, choices]
+    sleep 0.1
+    choices
   end
 
   # Get new choices from the user interactively.  
@@ -187,7 +205,7 @@ class CodeRunner::Budget
           #account_hash.each{|k,v| v[:name] = v[:name].to_sym} #Fixes an earlier bug
           #choices = account_arr.size.times.map{|i| [i,account_arr[i][:name]]}
           choices = account_hash.map{|k,v| [v[:sym], k]}.to_h
-          choices["-"] = "Transfer"
+          choices["-"] = :Transfer
           puts Terminal.default_colour
           print_transactions.call
           #format = Proc.new{|runs| runs.map{|r| r.signature.map{|d| d.to_s}.join(",")}.join("\n")}
@@ -222,8 +240,8 @@ class CodeRunner::Budget
               chosen = false
               break
             elsif choice == "-"
-              ext_account = "Transfer"
-              chosen = "Transfer"
+              ext_account = :Transfer
+              chosen = :Transfer
               break
             elsif not choices.keys.include? choice
               puts "Error: this symbol does not correspond to an account"
@@ -308,6 +326,7 @@ class CodeRunner::Budget
       @external_account = (
         (ch = get_sqlite_choices)[:external_account] or
         (ch = get_old_choices)[:external_account] or
+        (ch = get_matched_choices)[:external_account] or
         (ch = get_new_choices)[:external_account]
       )
       @sub_account = ch[:sub_account]
