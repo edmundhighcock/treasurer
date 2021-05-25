@@ -129,7 +129,7 @@ class Treasurer
     # that do not correspond to a real account: e.g. "Food Expenditure"
     def generate_accounts
       accounts = @runs.map{|r| r.account}.uniq.map{|acc| Account.new(acc, self, @runner, @runs, false)}
-      external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name} - ["Transfer"]).map{|acc| Account.new(acc, self, @runner, @runs, true)}
+      external_accounts = (@runs.map{|r| r.external_account}.uniq - accounts.map{|acc| acc.name} - ["Transfer", :Transfer]).map{|acc| Account.new(acc, self, @runner, @runs, true)}
       #if not @report_currency
       external_accounts = external_accounts.map do |acc|
         if acc_inf = ACCOUNT_INFO[acc.name] and currencies = acc_inf[:currencies] and currencies.size > 1
